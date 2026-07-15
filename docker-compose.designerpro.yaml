@@ -1,0 +1,172 @@
+# DesignerPRO addition — not upstream Postiz code.
+#
+# Staging deployment compose file for the DesignerPRO Postiz fork, adapted
+# from the official docker-compose.yaml with three changes:
+#   1. `postiz` builds from this repo's Dockerfile.dev (our fork's source,
+#      including the new group endpoints) instead of pulling the upstream
+#      prebuilt image.
+#   2. Secrets are `${VARIABLE}` placeholders resolved from Coolify's own
+#      encrypted per-application environment variables at deploy time —
+#      never hardcoded here, since this file is committed to git.
+#   3. `temporal-ui` (8080) and `temporal` (7233) host port bindings are
+#      dropped — nothing outside this compose stack's own Docker network
+#      needs to reach them (DesignerPRO only ever calls Postiz's own Public
+#      API), and 8080 specifically is already bound by this VPS's own
+#      Coolify/Traefik proxy. `spotlight` (Sentry debug UI) is dropped too —
+#      dev-only, not needed here.
+services:
+  postiz:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: postiz
+    restart: always
+    environment:
+      MAIN_URL: '${POSTIZ_PUBLIC_URL}'
+      FRONTEND_URL: '${POSTIZ_PUBLIC_URL}'
+      NEXT_PUBLIC_BACKEND_URL: '${POSTIZ_PUBLIC_URL}/api'
+      JWT_SECRET: '${POSTIZ_JWT_SECRET}'
+      DATABASE_URL: 'postgresql://postiz-user:${POSTIZ_POSTGRES_PASSWORD}@postiz-postgres:5432/postiz-db-local'
+      REDIS_URL: 'redis://postiz-redis:6379'
+      BACKEND_INTERNAL_URL: 'http://localhost:3000'
+      TEMPORAL_ADDRESS: 'temporal:7233'
+      IS_GENERAL: 'true'
+      DISABLE_REGISTRATION: '${POSTIZ_DISABLE_REGISTRATION}'
+      STORAGE_PROVIDER: 'local'
+      UPLOAD_DIRECTORY: '/uploads'
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: '/uploads'
+      API_LIMIT: 30
+      NX_ADD_PLUGINS: false
+    volumes:
+      - postiz-config:/config/
+      - postiz-uploads:/uploads/
+    ports:
+      - '4007:5000'
+    networks:
+      - postiz-network
+      - temporal-network
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+
+  postiz-postgres:
+    image: postgres:17-alpine
+    container_name: postiz-postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: '${POSTIZ_POSTGRES_PASSWORD}'
+      POSTGRES_USER: postiz-user
+      POSTGRES_DB: postiz-db-local
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+    networks:
+      - postiz-network
+    healthcheck:
+      test: pg_isready -U postiz-user -d postiz-db-local
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  postiz-redis:
+    image: redis:7.2
+    container_name: postiz-redis
+    restart: always
+    healthcheck:
+      test: redis-cli ping
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - postiz-redis-data:/data
+    networks:
+      - postiz-network
+
+  # -----------------------
+  # Temporal Stack
+  # -----------------------
+  temporal-elasticsearch:
+    container_name: temporal-elasticsearch
+    image: elasticsearch:7.17.27
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.enabled=false
+    networks:
+      - temporal-network
+    expose:
+      - 9200
+    volumes:
+      - /var/lib/elasticsearch/data
+
+  temporal-postgresql:
+    container_name: temporal-postgresql
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: '${TEMPORAL_POSTGRES_PASSWORD}'
+      POSTGRES_USER: temporal
+    networks:
+      - temporal-network
+    expose:
+      - 5432
+    volumes:
+      - /var/lib/postgresql/data
+
+  temporal:
+    container_name: temporal
+    image: temporalio/auto-setup:1.28.1
+    depends_on:
+      - temporal-postgresql
+      - temporal-elasticsearch
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${TEMPORAL_POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=temporal-elasticsearch
+      - ES_VERSION=v7
+      - TEMPORAL_NAMESPACE=default
+    networks:
+      - temporal-network
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    labels:
+      kompose.volume.type: configMap
+
+  temporal-admin-tools:
+    container_name: temporal-admin-tools
+    image: temporalio/admin-tools:1.28.1-tctl-1.18.4-cli-1.4.1
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    networks:
+      - temporal-network
+    stdin_open: true
+    depends_on:
+      - temporal
+    tty: true
+
+volumes:
+  postgres-volume:
+    external: false
+  postiz-redis-data:
+    external: false
+  postiz-config:
+    external: false
+  postiz-uploads:
+    external: false
+
+networks:
+  postiz-network:
+    external: false
+  temporal-network:
+    driver: bridge
+    name: temporal-network-designerpro

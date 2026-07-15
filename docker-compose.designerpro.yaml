@@ -119,7 +119,9 @@ services:
 
   temporal:
     container_name: temporal
-    image: temporalio/auto-setup:1.28.1
+    build:
+      context: .
+      dockerfile: var/docker/temporal.designerpro.Dockerfile
     depends_on:
       - temporal-postgresql
       - temporal-elasticsearch
@@ -136,10 +138,6 @@ services:
       - TEMPORAL_NAMESPACE=default
     networks:
       - temporal-network
-    volumes:
-      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
-    labels:
-      kompose.volume.type: configMap
 
   temporal-admin-tools:
     container_name: temporal-admin-tools

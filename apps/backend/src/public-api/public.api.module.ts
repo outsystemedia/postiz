@@ -9,9 +9,14 @@ import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { ExtractContentService } from '@gitroom/nestjs-libraries/openai/extract.content.service';
 import { CodesService } from '@gitroom/nestjs-libraries/services/codes.service';
 import { PublicIntegrationsController } from '@gitroom/backend/public-api/routes/v1/public.integrations.controller';
+// DesignerPRO addition — not upstream Postiz code. See public.groups.controller.ts.
+import { PublicGroupsController } from '@gitroom/backend/public-api/routes/v1/public.groups.controller';
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
 
-const authenticatedController = [PublicIntegrationsController];
+const authenticatedController = [
+  PublicIntegrationsController,
+  PublicGroupsController, // DesignerPRO addition
+];
 @Module({
   imports: [UploadModule],
   controllers: [...authenticatedController],

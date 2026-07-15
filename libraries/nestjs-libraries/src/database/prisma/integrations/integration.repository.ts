@@ -483,6 +483,57 @@ export class IntegrationRepository {
     });
   }
 
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  // Used to verify a customer/group id belongs to the caller's own org before
+  // connecting an integration to it (upstream `updateIntegrationGroup` does not
+  // check this on the customer side, only on the integration side).
+  getCustomer(orgId: string, id: string) {
+    return this._customers.model.customer.findFirst({
+      where: {
+        id,
+        orgId,
+        deletedAt: null,
+      },
+    });
+  }
+
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  createCustomer(orgId: string, name: string) {
+    return this._customers.model.customer.create({
+      data: {
+        name,
+        orgId,
+      },
+    });
+  }
+
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  renameCustomer(orgId: string, id: string, name: string) {
+    return this._customers.model.customer.update({
+      where: {
+        id,
+        orgId,
+      },
+      data: {
+        name,
+      },
+    });
+  }
+
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  // Soft-delete only, matching the `deletedAt: null` convention `customers()` already filters on.
+  deleteCustomer(orgId: string, id: string) {
+    return this._customers.model.customer.update({
+      where: {
+        id,
+        orgId,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+  }
+
   getIntegrationsList(org: string) {
     return this._integration.model.integration.findMany({
       where: {

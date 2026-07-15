@@ -144,6 +144,26 @@ export class IntegrationService {
     return this._integrationRepository.updateOnCustomerName(org, id, name);
   }
 
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  getCustomer(org: string, id: string) {
+    return this._integrationRepository.getCustomer(org, id);
+  }
+
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  createCustomer(org: string, name: string) {
+    return this._integrationRepository.createCustomer(org, name);
+  }
+
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  renameCustomer(org: string, id: string, name: string) {
+    return this._integrationRepository.renameCustomer(org, id, name);
+  }
+
+  // DesignerPRO addition: Public API group (Customer) lifecycle — not upstream Postiz code.
+  deleteCustomer(org: string, id: string) {
+    return this._integrationRepository.deleteCustomer(org, id);
+  }
+
   getIntegrationsList(org: string) {
     return this._integrationRepository.getIntegrationsList(org);
   }

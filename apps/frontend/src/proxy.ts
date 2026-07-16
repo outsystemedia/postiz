@@ -52,6 +52,16 @@ export async function proxy(request: NextRequest) {
     return topResponse;
   }
 
+  // DesignerPRO addition — not upstream Postiz code.
+  // /source must be reachable without authentication: AGPL-3.0 §13's
+  // requirement is to offer the corresponding source to anyone interacting
+  // with the service over the network, not only logged-in users. Without
+  // this exemption, the broad matcher above redirects every unauthenticated
+  // request (including this one) to /auth before it ever reaches the route.
+  if (nextUrl.pathname === '/source') {
+    return topResponse;
+  }
+
   if (
     nextUrl.pathname.startsWith('/integrations/social/') &&
     nextUrl.href.indexOf('state=login') === -1

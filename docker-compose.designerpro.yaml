@@ -50,6 +50,8 @@ services:
         condition: service_healthy
       postiz-redis:
         condition: service_healthy
+      temporal:
+        condition: service_healthy
 
   postiz-postgres:
     image: postgres:17-alpine
@@ -136,8 +138,23 @@ services:
       - ES_SEEDS=temporal-elasticsearch
       - ES_VERSION=v7
       - TEMPORAL_NAMESPACE=default
+      # Coolify attaches every service to an additional per-application
+      # network alongside the ones declared here, and both networks register
+      # the same "temporal" DNS alias for this container. Temporal's
+      # entrypoint auto-detects a single bind IP from `hostname`, which is
+      # non-deterministic across two networks — it can end up bound on the
+      # network a caller *isn't* resolving "temporal" through, causing
+      # intermittent ECONNREFUSED from Postiz. Binding on all interfaces
+      # removes the ambiguity entirely.
+      - BIND_ON_IP=0.0.0.0
     networks:
       - temporal-network
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z -w3 127.0.0.1 7233 || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 30s
 
   temporal-admin-tools:
     container_name: temporal-admin-tools

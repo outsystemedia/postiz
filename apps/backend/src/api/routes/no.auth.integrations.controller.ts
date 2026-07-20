@@ -245,6 +245,33 @@ export class NoAuthIntegrationsController {
         console.log(err);
       });
 
+    // DesignerPRO addition — not upstream Postiz code.
+    //
+    // The Public API's `GET /social/:integration` (used to start a connect
+    // attempt) only hands the caller an auth URL — this endpoint, reached via
+    // Postiz's own frontend after the OAuth provider redirects back, is the
+    // only place that ever learns which integration id a given `state`
+    // actually resolved to (`createUpdate.id` here, which `createOrUpdateIntegration`
+    // may have reused from an existing row rather than minted fresh — see
+    // its organizationId+internalId upsert key). Stash that mapping so
+    // `GET /public/v1/social/state/:state` (public.integrations.controller.ts)
+    // can hand it back to a Public API caller polling for the outcome,
+    // instead of the caller having to diff integration list snapshots and
+    // guess. TTL matches the DesignerPRO-side pending-connection window.
+    if (body.state) {
+      await ioRedis.set(
+        `connect-result:${body.state}`,
+        JSON.stringify({
+          id: createUpdate.id,
+          name: createUpdate.name,
+          identifier: createUpdate.providerIdentifier,
+          picture: createUpdate.picture ?? null,
+        }),
+        'EX',
+        600
+      );
+    }
+
     // Fetch pages if this is a two-step provider and not a refresh
     let pages: any[] = [];
     if (integrationProvider.isBetweenSteps && !refresh) {

@@ -14,6 +14,8 @@ const config: Config = {
   testEnvironment: 'node',
   testMatch: [
     '<rootDir>/apps/backend/src/public-api/routes/v1/public.groups.controller.spec.ts',
+    '<rootDir>/apps/backend/src/public-api/routes/v1/public.integrations.controller.designerpro.spec.ts',
+    '<rootDir>/apps/backend/src/api/routes/no.auth.integrations.controller.designerpro.spec.ts',
     '<rootDir>/libraries/nestjs-libraries/src/database/prisma/integrations/integration.repository.designerpro.spec.ts',
   ],
   moduleNameMapper: {

@@ -336,10 +336,59 @@ export class PublicIntegrationsController {
       await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
 
-      return { url };
+      // DesignerPRO addition: `state` is handed back so the caller can poll
+      // GET /social/state/:state below for the exact integration id this
+      // attempt resolves to, instead of diffing GET /integrations snapshots.
+      return { url, state };
     } catch (err) {
       throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
     }
+  }
+
+  // DesignerPRO addition — not upstream Postiz code.
+  //
+  // Upstream has no way for a Public API caller to learn which integration a
+  // given connect attempt (`GET /social/:integration` above) resolved to —
+  // the OAuth callback lands on Postiz's own frontend, which completes the
+  // connection via the session-authenticated `POST /integrations/social-connect/:integration`
+  // (no.auth.integrations.controller.ts), not through the Public API at all.
+  // That handler stashes `connect-result:${state}` in Redis once it knows the
+  // resulting integration id — including when `createOrUpdateIntegration`
+  // reuses an existing row for the same real-world account rather than
+  // minting a new one (its upsert key is org+internalId, not customer/group),
+  // which is exactly the case a naive before/after list diff cannot see.
+  //
+  // The `organization:${state}` check below both scopes this lookup to the
+  // caller's own org and doubles as existence/expiry validation, since it is
+  // set (with a 1h TTL) by the same call that minted `state` in the first
+  // place.
+  @Get('/social/state/:state')
+  async getSocialConnectResult(
+    @GetOrgFromRequest() org: Organization,
+    @Param('state') state: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+
+    const orgForState = await ioRedis.get(`organization:${state}`);
+    if (!orgForState || orgForState !== org.id) {
+      throw new HttpException({ msg: 'State not found' }, 404);
+    }
+
+    const raw = await ioRedis.get(`connect-result:${state}`);
+    if (!raw) {
+      return { status: 'pending' as const };
+    }
+
+    const result = JSON.parse(raw);
+    return {
+      status: 'connected' as const,
+      integration: {
+        id: result.id,
+        name: result.name,
+        identifier: result.identifier,
+        picture: result.picture ?? null,
+      },
+    };
   }
 
   @Get('/notifications')

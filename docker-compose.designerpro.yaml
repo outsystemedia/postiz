@@ -14,6 +14,11 @@
 #      API), and 8080 specifically is already bound by this VPS's own
 #      Coolify/Traefik proxy. `spotlight` (Sentry debug UI) is dropped too —
 #      dev-only, not needed here.
+#   4. `postiz` joins the shared external `coolify` network and carries
+#      explicit `traefik.docker.network`/`loadbalancer.server.port` labels
+#      — Coolify's own auto-generated labels (from docker_compose_domains)
+#      omitted both, which left the HTTPS router/cert working but the
+#      backend unreachable (silent hang until origin timeout).
 services:
   postiz:
     build:
@@ -45,6 +50,27 @@ services:
     networks:
       - postiz-network
       - temporal-network
+      - coolify
+    labels:
+      # Coolify's own auto-generated Traefik router labels (added at deploy
+      # time via docker_compose_domains) don't include these two — without
+      # them Traefik can't tell which of this container's several networks
+      # to dial (it's on 3+: postiz-network, temporal-network, its own
+      # per-app network) or which of its several listening ports (5000
+      # nginx, 3000/3002/4200 internal) is the real one. The router/TLS
+      # cert still resolve fine either way (independent of backend
+      # reachability), which is what made this so easy to misdiagnose as a
+      # Cloudflare/firewall problem — it hangs until the origin times out.
+      - traefik.docker.network=coolify
+      - traefik.http.services.postiz-designerpro.loadbalancer.server.port=5000
+      # These two router names embed this specific Coolify resource's UUID
+      # (jtgretlju47ypidilih8opxi) — Coolify auto-generates routers with
+      # that same naming pattern from docker_compose_domains. If this app
+      # is ever recreated as a new Coolify resource, update the UUID here
+      # to match, or the port/network labels above will silently not
+      # attach to any router.
+      - traefik.http.routers.http-0-jtgretlju47ypidilih8opxi-postiz.service=postiz-designerpro
+      - traefik.http.routers.https-0-jtgretlju47ypidilih8opxi-postiz.service=postiz-designerpro
     depends_on:
       postiz-postgres:
         condition: service_healthy
@@ -185,3 +211,5 @@ networks:
   temporal-network:
     driver: bridge
     name: temporal-network-designerpro
+  coolify:
+    external: true

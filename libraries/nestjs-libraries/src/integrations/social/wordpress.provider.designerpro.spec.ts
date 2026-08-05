@@ -164,6 +164,156 @@ describe('WordpressProvider — DesignerPRO security additions', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards the complete blog contract to the WordPress REST API', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          post: { name: 'Posts', rest_base: 'posts' },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 42,
+          link: 'https://wp.example.com/complete-article',
+        }),
+      });
+    global.fetch = fetchMock as any;
+    const provider = new WordpressProvider();
+    const rawCode = Buffer.from(
+      JSON.stringify({
+        domain: 'https://wp.example.com',
+        username: 'editor',
+        password: 'application-password',
+      })
+    ).toString('base64');
+
+    await expect(
+      provider.post(
+        'integration_1',
+        AuthService.encryptSecret(rawCode),
+        [
+          {
+            id: 'post_1',
+            message: '<h2>Complete body</h2>',
+            settings: {
+              title: 'Complete article',
+              type: 'posts',
+              slug: 'complete-article',
+              excerpt: 'Summary',
+              status: 'private',
+              author: 7,
+              parent: 0,
+              menu_order: 3,
+              comment_status: 'closed',
+              ping_status: 'closed',
+              format: 'standard',
+              template: 'single-special.php',
+              sticky: true,
+              password: 'reader-password',
+              categories: [2, 8],
+              tags: [4],
+              meta: { campaign: 'launch' },
+              seo_plugin: 'yoast',
+              seo_title: 'SEO title',
+              seo_description: 'SEO description',
+              focus_keyword: 'article',
+              canonical_url: 'https://wp.example.com/complete-article',
+              robots_index: false,
+              robots_follow: true,
+              og_title: 'OG title',
+              og_description: 'OG description',
+            },
+          },
+        ],
+        {} as any
+      )
+    ).resolves.toEqual([
+      {
+        id: 'post_1',
+        status: 'completed',
+        postId: '42',
+        releaseURL: 'https://wp.example.com/complete-article',
+      },
+    ]);
+
+    const request = fetchMock.mock.calls[1];
+    expect(request[0]).toBe('https://wp.example.com/wp-json/wp/v2/posts');
+    expect(JSON.parse(request[1].body)).toEqual({
+      title: 'Complete article',
+      content: '<h2>Complete body</h2>',
+      slug: 'complete-article',
+      status: 'private',
+      excerpt: 'Summary',
+      author: 7,
+      parent: 0,
+      menu_order: 3,
+      comment_status: 'closed',
+      ping_status: 'closed',
+      format: 'standard',
+      template: 'single-special.php',
+      sticky: true,
+      password: 'reader-password',
+      categories: [2, 8],
+      tags: [4],
+      meta: {
+        _yoast_wpseo_title: 'SEO title',
+        _yoast_wpseo_metadesc: 'SEO description',
+        _yoast_wpseo_focuskw: 'article',
+        _yoast_wpseo_canonical: 'https://wp.example.com/complete-article',
+        '_yoast_wpseo_meta-robots-noindex': '1',
+        _yoast_wpseo_opengraph_title: 'OG title',
+        _yoast_wpseo_opengraph_description: 'OG description',
+        campaign: 'launch',
+      },
+    });
+  });
+
+  it('does not report completion when WordPress rejects the post', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          post: { name: 'Posts', rest_base: 'posts' },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ message: 'Invalid category id' }),
+      });
+    global.fetch = fetchMock as any;
+    const provider = new WordpressProvider();
+    const rawCode = Buffer.from(
+      JSON.stringify({
+        domain: 'https://wp.example.com',
+        username: 'editor',
+        password: 'application-password',
+      })
+    ).toString('base64');
+
+    await expect(
+      provider.post(
+        'integration_1',
+        AuthService.encryptSecret(rawCode),
+        [
+          {
+            id: 'post_1',
+            message: 'Body',
+            settings: { title: 'Title', type: 'posts' },
+          },
+        ],
+        {} as any
+      )
+    ).rejects.toThrow('Invalid category id');
+  });
+
   it('detects tampering in encrypted credentials', () => {
     const encrypted = AuthService.encryptSecret('sensitive');
     const tampered = `${encrypted.slice(0, -1)}${

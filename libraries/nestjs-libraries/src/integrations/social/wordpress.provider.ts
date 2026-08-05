@@ -216,8 +216,9 @@ export class WordpressProvider
         response.blob()
       );
       const filename = this.safeFilename(mainImagePath);
-      const mediaResponse = await (
-        await this.wordpressFetch(`${body.domain}/wp-json/wp/v2/media`, {
+      const mediaUploadResponse = await this.wordpressFetch(
+        `${body.domain}/wp-json/wp/v2/media`,
+        {
           method: 'POST',
           headers: {
             Authorization: `Basic ${auth}`,
@@ -225,35 +226,77 @@ export class WordpressProvider
             'Content-Type': blob.type,
           },
           body: blob,
-        })
-      ).json();
+        }
+      );
+      const mediaResponse = await mediaUploadResponse.json();
+      if (!mediaUploadResponse.ok || !mediaResponse?.id) {
+        throw new Error(
+          String(
+            mediaResponse?.message || 'WordPress rejected the featured image'
+          )
+        );
+      }
 
-      mediaId = mediaResponse.id;
+      mediaId = String(mediaResponse.id);
     }
 
-    const submit = await (
-      await this.wordpressFetch(
-        `${body.domain}/wp-json/wp/v2/${requestedType}`,
-        {
-          headers: {
-            Authorization: `Basic ${auth}`,
-            'Content-Type': 'application/json',
-          },
-          method: 'POST',
-          body: JSON.stringify({
-            title: postDetails?.[0]?.settings?.title,
-            content: postDetails?.[0]?.message,
-            slug: slugify(postDetails?.[0]?.settings?.title, {
-              lower: true,
-              strict: true,
-              trim: true,
-            }),
-            status: 'publish',
-            ...(mediaId ? { featured_media: mediaId } : {}),
-          }),
-        }
-      )
-    ).json();
+    const settings = postDetails?.[0]?.settings;
+    const seoMeta = this.wordpressSeoMeta(settings);
+    const meta = { ...seoMeta, ...(settings?.meta || {}) };
+    const requestBody = {
+      title: settings?.title,
+      content: postDetails?.[0]?.message,
+      slug:
+        settings?.slug ||
+        slugify(settings?.title || '', {
+          lower: true,
+          strict: true,
+          trim: true,
+        }),
+      status: settings?.status || 'publish',
+      ...(settings?.excerpt ? { excerpt: settings.excerpt } : {}),
+      ...(typeof settings?.author === 'number' && settings.author > 0
+        ? { author: settings.author }
+        : {}),
+      ...(typeof settings?.parent === 'number' && settings.parent >= 0
+        ? { parent: settings.parent }
+        : {}),
+      ...(typeof settings?.menu_order === 'number' && settings.menu_order >= 0
+        ? { menu_order: settings.menu_order }
+        : {}),
+      ...(settings?.comment_status
+        ? { comment_status: settings.comment_status }
+        : {}),
+      ...(settings?.ping_status ? { ping_status: settings.ping_status } : {}),
+      ...(settings?.format ? { format: settings.format } : {}),
+      ...(settings?.template ? { template: settings.template } : {}),
+      ...(settings?.sticky ? { sticky: true } : {}),
+      ...(settings?.password ? { password: settings.password } : {}),
+      ...(settings?.categories?.length
+        ? { categories: settings.categories }
+        : {}),
+      ...(settings?.tags?.length ? { tags: settings.tags } : {}),
+      ...(Object.keys(meta).length ? { meta } : {}),
+      ...(mediaId ? { featured_media: Number(mediaId) } : {}),
+    };
+
+    const submitResponse = await this.wordpressFetch(
+      `${body.domain}/wp-json/wp/v2/${requestedType}`,
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      }
+    );
+    const submit = await submitResponse.json();
+    if (!submitResponse.ok || !submit?.id) {
+      throw new Error(
+        String(submit?.message || 'WordPress did not confirm the publication')
+      );
+    }
 
     return [
       {
@@ -325,5 +368,45 @@ export class WordpressProvider
     } catch {
       return 'featured-image';
     }
+  }
+
+  private wordpressSeoMeta(settings?: WordpressDto): Record<string, unknown> {
+    if (!settings || settings.seo_plugin === 'none' || !settings.seo_plugin) {
+      return {};
+    }
+    const compact = (value: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(value).filter(
+          ([, item]) => item !== undefined && item !== ''
+        )
+      );
+
+    if (settings.seo_plugin === 'yoast') {
+      return compact({
+        _yoast_wpseo_title: settings.seo_title,
+        _yoast_wpseo_metadesc: settings.seo_description,
+        _yoast_wpseo_focuskw: settings.focus_keyword,
+        _yoast_wpseo_canonical: settings.canonical_url,
+        '_yoast_wpseo_meta-robots-noindex':
+          settings.robots_index === false ? '1' : undefined,
+        '_yoast_wpseo_meta-robots-nofollow':
+          settings.robots_follow === false ? '1' : undefined,
+        _yoast_wpseo_opengraph_title: settings.og_title,
+        _yoast_wpseo_opengraph_description: settings.og_description,
+      });
+    }
+
+    return compact({
+      rank_math_title: settings.seo_title,
+      rank_math_description: settings.seo_description,
+      rank_math_focus_keyword: settings.focus_keyword,
+      rank_math_canonical_url: settings.canonical_url,
+      rank_math_facebook_title: settings.og_title,
+      rank_math_facebook_description: settings.og_description,
+      rank_math_robots: [
+        settings.robots_index === false ? 'noindex' : 'index',
+        settings.robots_follow === false ? 'nofollow' : 'follow',
+      ],
+    });
   }
 }

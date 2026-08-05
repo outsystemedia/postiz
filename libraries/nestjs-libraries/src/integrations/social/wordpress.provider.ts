@@ -23,6 +23,7 @@ type WordpressCredentials = {
 
 type WordpressPostType = { id: string; name: string };
 const WORDPRESS_POST_TYPE_RE = /^[a-zA-Z0-9_-]{1,100}$/;
+const WORDPRESS_REQUEST_TIMEOUT_MS = 30_000;
 
 export class WordpressProvider
   extends SocialAbstract
@@ -120,6 +121,7 @@ export class WordpressProvider
       );
       const response = await fetch(`${body.domain}/wp-json/wp/v2/users/me`, {
         redirect: 'error',
+        signal: AbortSignal.timeout(WORDPRESS_REQUEST_TIMEOUT_MS),
         // @ts-ignore — undici option, not in lib.dom fetch types
         dispatcher: ssrfSafeDispatcher,
         headers: {
@@ -308,6 +310,8 @@ export class WordpressProvider
     return this.fetch(url, {
       ...options,
       redirect: 'error',
+      signal:
+        options.signal ?? AbortSignal.timeout(WORDPRESS_REQUEST_TIMEOUT_MS),
       // @ts-ignore — undici option, not in lib.dom fetch types
       dispatcher: ssrfSafeDispatcher,
     });

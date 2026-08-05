@@ -82,6 +82,7 @@ describe('WordpressProvider — DesignerPRO security additions', () => {
       'https://wp.example.com/blog/wp-json/wp/v2/users/me',
       expect.objectContaining({
         redirect: 'error',
+        signal: expect.any(AbortSignal),
         dispatcher: expect.anything(),
       })
     );
@@ -116,6 +117,7 @@ describe('WordpressProvider — DesignerPRO security additions', () => {
       'https://wp.example.com/wp-json/wp/v2/types',
       expect.objectContaining({
         redirect: 'error',
+        signal: expect.any(AbortSignal),
         dispatcher: expect.anything(),
         headers: {
           Authorization: `Basic ${Buffer.from(

@@ -33,9 +33,12 @@ jest.mock(
   '@gitroom/nestjs-libraries/database/prisma/posts/posts.service',
   () => ({ PostsService: jest.fn() })
 );
-jest.mock('@gitroom/nestjs-libraries/database/prisma/media/media.service', () => ({
-  MediaService: jest.fn(),
-}));
+jest.mock(
+  '@gitroom/nestjs-libraries/database/prisma/media/media.service',
+  () => ({
+    MediaService: jest.fn(),
+  })
+);
 jest.mock(
   '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service',
   () => ({ NotificationService: jest.fn() })
@@ -44,9 +47,12 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
   IntegrationManager: jest.fn(),
   socialIntegrationList: [],
 }));
-jest.mock('@gitroom/nestjs-libraries/integrations/refresh.integration.service', () => ({
-  RefreshIntegrationService: jest.fn(),
-}));
+jest.mock(
+  '@gitroom/nestjs-libraries/integrations/refresh.integration.service',
+  () => ({
+    RefreshIntegrationService: jest.fn(),
+  })
+);
 
 import { PublicIntegrationsController } from './public.integrations.controller';
 
@@ -66,9 +72,57 @@ function buildController(integrationManager?: any) {
   return { controller };
 }
 
+function buildWordpressController(authResult?: any) {
+  const provider = {
+    oneTimeToken: false,
+    authenticate: jest.fn().mockResolvedValue(
+      authResult ?? {
+        id: 'https://wp.example.com_7',
+        name: 'Editor',
+        username: 'editor',
+        picture: 'https://wp.example.com/avatar.jpg',
+        accessToken: 'secret:v1:encrypted',
+        refreshToken: '',
+        expiresIn: 999999,
+      }
+    ),
+  };
+  const integrationManager = {
+    getSocialIntegration: jest.fn().mockReturnValue(provider),
+  };
+  const integrationService = {
+    createOrUpdateIntegration: jest.fn().mockResolvedValue({
+      id: 'int_wp',
+      name: 'Editor',
+      providerIdentifier: 'wordpress',
+      picture: 'https://wp.example.com/avatar.jpg',
+    }),
+  };
+  const refreshIntegrationService = {
+    startRefreshWorkflow: jest.fn().mockResolvedValue(undefined),
+  };
+  const unused = {} as any;
+  const controller = new PublicIntegrationsController(
+    integrationService as any,
+    unused,
+    unused,
+    unused,
+    integrationManager as any,
+    refreshIntegrationService as any
+  );
+  return {
+    controller,
+    provider,
+    integrationService,
+    refreshIntegrationService,
+  };
+}
+
 describe('PublicIntegrationsController — DesignerPRO connect-state additions', () => {
   afterEach(async () => {
     await ioRedis.del('organization:state_1');
+    await ioRedis.del('integration:state_1');
+    await ioRedis.del('login:state_1');
     await ioRedis.del('connect-result:state_1');
   });
 
@@ -93,6 +147,121 @@ describe('PublicIntegrationsController — DesignerPRO connect-state additions',
         url: 'https://x.example.com/authorize',
         state: 'state_1',
       });
+      await expect(ioRedis.get('integration:state_1')).resolves.toBe('x');
+    });
+  });
+
+  describe('POST /social/wordpress/connect', () => {
+    async function seedWordpressState(provider = 'wordpress') {
+      await ioRedis.set('organization:state_1', ORG.id);
+      await ioRedis.set('integration:state_1', provider);
+      await ioRedis.set('login:state_1', 'code-verifier');
+    }
+
+    it('rejects a state minted for another provider', async () => {
+      await seedWordpressState('x');
+      const { controller, provider, integrationService } =
+        buildWordpressController();
+
+      await expect(
+        controller.connectWordpress(ORG, {
+          state: 'state_1',
+          domain: 'https://wp.example.com',
+          username: 'editor',
+          password: 'application password',
+        })
+      ).rejects.toMatchObject({ status: 404 });
+      expect(provider.authenticate).not.toHaveBeenCalled();
+      expect(
+        integrationService.createOrUpdateIntegration
+      ).not.toHaveBeenCalled();
+    });
+
+    it('does not persist anything when WordPress rejects the credentials', async () => {
+      await seedWordpressState();
+      const { controller, integrationService } = buildWordpressController(
+        'Invalid credentials'
+      );
+
+      await expect(
+        controller.connectWordpress(ORG, {
+          state: 'state_1',
+          domain: 'https://wp.example.com',
+          username: 'editor',
+          password: 'wrong',
+        })
+      ).rejects.toMatchObject({ status: 400 });
+      expect(
+        integrationService.createOrUpdateIntegration
+      ).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid timezone before checking credentials', async () => {
+      await seedWordpressState();
+      const { controller, provider, integrationService } =
+        buildWordpressController();
+
+      await expect(
+        controller.connectWordpress(ORG, {
+          state: 'state_1',
+          domain: 'https://wp.example.com',
+          username: 'editor',
+          password: 'application password',
+          timezone: 'not-a-number',
+        })
+      ).rejects.toMatchObject({ status: 400 });
+      expect(provider.authenticate).not.toHaveBeenCalled();
+      expect(
+        integrationService.createOrUpdateIntegration
+      ).not.toHaveBeenCalled();
+    });
+
+    it('connects with provider-encrypted credentials and exposes no secret', async () => {
+      await seedWordpressState();
+      const {
+        controller,
+        provider,
+        integrationService,
+        refreshIntegrationService,
+      } = buildWordpressController();
+
+      const result = await controller.connectWordpress(ORG, {
+        state: 'state_1',
+        domain: 'https://wp.example.com',
+        username: 'editor',
+        password: 'application password',
+        timezone: '60',
+      });
+
+      const encoded = provider.authenticate.mock.calls[0][0].code;
+      expect(JSON.parse(Buffer.from(encoded, 'base64').toString())).toEqual({
+        domain: 'https://wp.example.com',
+        username: 'editor',
+        password: 'application password',
+      });
+      expect(integrationService.createOrUpdateIntegration).toHaveBeenCalledWith(
+        undefined,
+        false,
+        ORG.id,
+        'Editor',
+        'https://wp.example.com/avatar.jpg',
+        'social',
+        'https://wp.example.com_7',
+        'wordpress',
+        'secret:v1:encrypted',
+        '',
+        999999,
+        'editor',
+        false,
+        undefined,
+        60
+      );
+      expect(refreshIntegrationService.startRefreshWorkflow).toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toContain('application password');
+      await expect(ioRedis.get('login:state_1')).resolves.toBeUndefined();
+      await expect(ioRedis.get('connect-result:state_1')).resolves.toContain(
+        'int_wp'
+      );
     });
   });
 

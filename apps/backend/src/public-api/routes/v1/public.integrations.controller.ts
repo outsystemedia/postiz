@@ -335,6 +335,7 @@ export class PublicIntegrationsController {
 
       await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
+      await ioRedis.set(`integration:${state}`, integration, 'EX', 3600);
 
       // DesignerPRO addition: `state` is handed back so the caller can poll
       // GET /social/state/:state below for the exact integration id this
@@ -343,6 +344,115 @@ export class PublicIntegrationsController {
     } catch (err) {
       throw new HttpException({ msg: 'Failed to generate auth URL' }, 500);
     }
+  }
+
+  /**
+   * DesignerPRO addition — completes the credential-based WordPress flow
+   * without exposing Postiz's internal no-auth callback to the caller.
+   * The state is both organization- and provider-bound by getIntegrationUrl.
+   */
+  @Post('/social/wordpress/connect')
+  @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  async connectWordpress(
+    @GetOrgFromRequest() org: Organization,
+    @Body()
+    body: {
+      state?: string;
+      domain?: string;
+      username?: string;
+      password?: string;
+      timezone?: string;
+    }
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+
+    const state = String(body?.state || '').trim();
+    const domain = String(body?.domain || '').trim();
+    const username = String(body?.username || '').trim();
+    const password = String(body?.password || '').trim();
+    const timezone = Number(body?.timezone || 0);
+    if (
+      !state ||
+      !domain ||
+      !username ||
+      !password ||
+      state.length > 200 ||
+      domain.length > 2048 ||
+      username.length > 200 ||
+      password.length > 512 ||
+      !Number.isFinite(timezone) ||
+      Math.abs(timezone) > 1440
+    ) {
+      throw new HttpException(
+        { msg: 'Invalid WordPress connection data' },
+        400
+      );
+    }
+
+    const [orgForState, providerForState, loginForState] = await Promise.all([
+      ioRedis.get(`organization:${state}`),
+      ioRedis.get(`integration:${state}`),
+      ioRedis.get(`login:${state}`),
+    ]);
+    if (
+      orgForState !== org.id ||
+      providerForState !== 'wordpress' ||
+      !loginForState
+    ) {
+      throw new HttpException({ msg: 'State not found' }, 404);
+    }
+
+    const integrationProvider =
+      this._integrationManager.getSocialIntegration('wordpress');
+    const code = Buffer.from(
+      JSON.stringify({ domain, username, password })
+    ).toString('base64');
+    const auth = await integrationProvider.authenticate({
+      code,
+      codeVerifier: 'none',
+    });
+    if (typeof auth === 'string' || !auth.id || !auth.accessToken) {
+      throw new HttpException(
+        { msg: 'Invalid WordPress credentials or URL' },
+        400
+      );
+    }
+
+    const createUpdate =
+      await this._integrationService.createOrUpdateIntegration(
+        auth.additionalSettings,
+        !!integrationProvider.oneTimeToken,
+        org.id,
+        String(auth.name || auth.username || 'WordPress').trim(),
+        auth.picture,
+        'social',
+        String(auth.id),
+        'wordpress',
+        auth.accessToken,
+        auth.refreshToken,
+        auth.expiresIn,
+        auth.username,
+        false,
+        undefined,
+        timezone
+      );
+
+    this._refreshIntegrationService
+      .startRefreshWorkflow(org.id, createUpdate.id, integrationProvider)
+      .catch(() => undefined);
+
+    const result = {
+      id: createUpdate.id,
+      name: createUpdate.name,
+      identifier: createUpdate.providerIdentifier,
+      picture: createUpdate.picture ?? null,
+    };
+    await Promise.all([
+      ioRedis.set(`connect-result:${state}`, JSON.stringify(result), 'EX', 600),
+      ioRedis.del(`login:${state}`),
+    ]);
+
+    return { status: 'connected' as const, integration: result };
   }
 
   // DesignerPRO addition — not upstream Postiz code.

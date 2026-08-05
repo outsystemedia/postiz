@@ -10,10 +10,19 @@ import { Integration } from '@prisma/client';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { WordpressDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/wordpress.dto';
 import slugify from 'slugify';
-// import FormData from 'form-data';
-import axios from 'axios';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
-import { string } from 'yup';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
+import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
+import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+
+type WordpressCredentials = {
+  domain: string;
+  username: string;
+  password: string;
+};
+
+type WordpressPostType = { id: string; name: string };
+const WORDPRESS_POST_TYPE_RE = /^[a-zA-Z0-9_-]{1,100}$/;
 
 export class WordpressProvider
   extends SocialAbstract
@@ -24,8 +33,9 @@ export class WordpressProvider
   isBetweenSteps = false;
   editor = 'html' as const;
   scopes = [] as string[];
-  override maxConcurrentJob = 5; // WordPress self-hosted typically has generous limits
+  override maxConcurrentJob = 5;
   dto = WordpressDto;
+
   maxLength() {
     return 100000;
   }
@@ -39,7 +49,7 @@ export class WordpressProvider
     };
   }
 
-  async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
+  async refreshToken(_refreshToken: string): Promise<AuthTokenDetails> {
     return {
       refreshToken: '',
       expiresIn: 0,
@@ -50,6 +60,7 @@ export class WordpressProvider
       username: '',
     };
   }
+
   override handleErrors(
     body: string
   ):
@@ -58,7 +69,8 @@ export class WordpressProvider
     if (body.indexOf('rest_cannot_create') > -1) {
       return {
         type: 'bad-body',
-        value: 'The connect user has insufficient permissions to create posts',
+        value:
+          'The connected user has insufficient permissions to create posts',
       };
     }
     return undefined;
@@ -69,7 +81,7 @@ export class WordpressProvider
       {
         key: 'domain',
         label: 'Domain URL',
-        validation: `/^https?:\\/\\/(?:www\\.)?[\\w\\-]+(\\.[\\w\\-]+)+([\\/?#][^\\s]*)?$/`,
+        validation: `/^https:\\/\\/(?:www\\.)?[\\w\\-]+(\\.[\\w\\-]+)+([\\/][^\\s?#]*)?$/`,
         type: 'text' as const,
       },
       {
@@ -80,7 +92,7 @@ export class WordpressProvider
       },
       {
         key: 'password',
-        label: 'Password',
+        label: 'Application Password',
         validation: `/.+/`,
         type: 'password' as const,
       },
@@ -92,48 +104,55 @@ export class WordpressProvider
     codeVerifier: string;
     refresh?: string;
   }) {
-    const body = JSON.parse(Buffer.from(params.code, 'base64').toString()) as {
-      domain: string;
-      username: string;
-      password: string;
-    };
     try {
+      const submitted = this.decodeConnectionCode(params.code);
+      const body: WordpressCredentials = {
+        domain: await this.normalizeAndValidateDomain(submitted.domain),
+        username: submitted.username.trim(),
+        password: submitted.password.trim(),
+      };
+      if (!body.username || !body.password) {
+        return 'Invalid credentials';
+      }
+
       const auth = Buffer.from(`${body.username}:${body.password}`).toString(
         'base64'
       );
-      const { id, name, avatar_urls, code } = await (
-        await fetch(`${body.domain}/wp-json/wp/v2/users/me`, {
-          headers: {
-            Authorization: `Basic ${auth}`,
-          },
-        })
-      ).json();
+      const response = await fetch(`${body.domain}/wp-json/wp/v2/users/me`, {
+        redirect: 'error',
+        // @ts-ignore — undici option, not in lib.dom fetch types
+        dispatcher: ssrfSafeDispatcher,
+        headers: {
+          Authorization: `Basic ${auth}`,
+        },
+      });
+      if (!response.ok) {
+        return 'Invalid credentials';
+      }
 
-      if (code) {
-        throw "Invalid credentials";
+      const { id, name, avatar_urls, code } = await response.json();
+      if (!id || code) {
+        return 'Invalid credentials';
       }
 
       const biggestImage = Object.entries(avatar_urls || {}).reduce(
-        (all, current) => {
-          if (all > Number(current[0])) {
-            return all;
-          }
-          return Number(current[0]);
-        },
+        (all, current) => Math.max(all, Number(current[0]) || 0),
         0
+      );
+      const normalizedCode = Buffer.from(JSON.stringify(body)).toString(
+        'base64'
       );
 
       return {
         refreshToken: '',
         expiresIn: dayjs().add(100, 'years').unix() - dayjs().unix(),
-        accessToken: params.code,
-        id: body.domain + '_' + id,
+        accessToken: AuthService.encryptSecret(normalizedCode),
+        id: `${body.domain}_${id}`,
         name,
         picture: avatar_urls?.[String(biggestImage)] || '',
         username: body.username,
       };
-    } catch (err) {
-      console.log(err);
+    } catch {
       return 'Invalid credentials';
     }
   }
@@ -143,77 +162,64 @@ export class WordpressProvider
     dataSchema: [],
   })
   async postTypes(token: string) {
-    const body = JSON.parse(Buffer.from(token, 'base64').toString()) as {
-      domain: string;
-      username: string;
-      password: string;
-    };
-
-    const auth = Buffer.from(`${body.username}:${body.password}`).toString(
-      'base64'
-    );
-
+    const body = this.decodeStoredCredentials(token);
+    const auth = this.basicAuth(body);
     const postTypes = await (
-      await this.fetch(`${body.domain}/wp-json/wp/v2/types`, {
-        headers: {
-          Authorization: `Basic ${auth}`,
-        },
+      await this.wordpressFetch(`${body.domain}/wp-json/wp/v2/types`, {
+        headers: { Authorization: `Basic ${auth}` },
       })
     ).json();
 
-    return Object.entries<any>(postTypes).reduce((all, [key, value]) => {
-      if (
-        key.indexOf('wp_') > -1 ||
-        key.indexOf('nav_') > -1 ||
-        key === 'attachment'
-      ) {
+    return Object.entries<any>(postTypes).reduce<WordpressPostType[]>(
+      (all, [key, value]) => {
+        if (
+          key.indexOf('wp_') > -1 ||
+          key.indexOf('nav_') > -1 ||
+          key === 'attachment'
+        ) {
+          return all;
+        }
+
+        const id = String(value?.rest_base || '').trim();
+        const name = String(value?.name || '').trim();
+        if (!WORDPRESS_POST_TYPE_RE.test(id) || !name || name.length > 100) {
+          return all;
+        }
+
+        all.push({ id, name });
         return all;
-      }
-
-      all.push({
-        id: value.rest_base,
-        name: value.name,
-      });
-
-      return all;
-    }, []);
+      },
+      []
+    );
   }
 
   async post(
-    id: string,
+    _id: string,
     accessToken: string,
     postDetails: PostDetails<WordpressDto>[],
-    integration: Integration
+    _integration: Integration
   ): Promise<PostResponse[]> {
-    const body = JSON.parse(Buffer.from(accessToken, 'base64').toString()) as {
-      domain: string;
-      username: string;
-      password: string;
-    };
-
-    const auth = Buffer.from(`${body.username}:${body.password}`).toString(
-      'base64'
-    );
+    const body = this.decodeStoredCredentials(accessToken);
+    const auth = this.basicAuth(body);
+    const requestedType = String(postDetails?.[0]?.settings?.type || '').trim();
+    const availablePostTypes = await this.postTypes(accessToken);
+    if (!availablePostTypes.some(({ id }) => id === requestedType)) {
+      throw new Error('Selected WordPress post type is not available');
+    }
 
     let mediaId = '';
-    if (postDetails?.[0]?.settings?.main_image?.path) {
-      console.log(
-        'Uploading image to WordPress',
-        postDetails[0].settings.main_image.path
+    const mainImagePath = postDetails?.[0]?.settings?.main_image?.path;
+    if (mainImagePath) {
+      const blob = await this.wordpressFetch(mainImagePath).then((response) =>
+        response.blob()
       );
-
-      const blob = await this.fetch(
-        postDetails[0].settings.main_image.path
-      ).then((r) => r.blob());
-
+      const filename = this.safeFilename(mainImagePath);
       const mediaResponse = await (
-        await this.fetch(`${body.domain}/wp-json/wp/v2/media`, {
+        await this.wordpressFetch(`${body.domain}/wp-json/wp/v2/media`, {
           method: 'POST',
           headers: {
             Authorization: `Basic ${auth}`,
-            'Content-Disposition': `attachment; filename="${postDetails[0].settings.main_image.path
-              .split('/')
-              .pop()}"`,
+            'Content-Disposition': `attachment; filename="${filename}"`,
             'Content-Type': blob.type,
           },
           body: blob,
@@ -224,8 +230,8 @@ export class WordpressProvider
     }
 
     const submit = await (
-      await this.fetch(
-        `${body.domain}/wp-json/wp/v2/${postDetails?.[0]?.settings?.type}`,
+      await this.wordpressFetch(
+        `${body.domain}/wp-json/wp/v2/${requestedType}`,
         {
           headers: {
             Authorization: `Basic ${auth}`,
@@ -255,5 +261,65 @@ export class WordpressProvider
         releaseURL: submit.link,
       },
     ];
+  }
+
+  private decodeConnectionCode(code: string): WordpressCredentials {
+    return JSON.parse(
+      Buffer.from(code, 'base64').toString()
+    ) as WordpressCredentials;
+  }
+
+  private decodeStoredCredentials(token: string): WordpressCredentials {
+    // Backwards compatibility for WordPress integrations created before the
+    // encrypted token format: their token is raw Base64 JSON.
+    const encoded = token.startsWith('secret:v1:')
+      ? AuthService.decryptSecret(token)
+      : token;
+    return this.decodeConnectionCode(encoded);
+  }
+
+  private basicAuth(credentials: WordpressCredentials): string {
+    return Buffer.from(
+      `${credentials.username}:${credentials.password}`
+    ).toString('base64');
+  }
+
+  private async normalizeAndValidateDomain(value: string): Promise<string> {
+    const parsed = new URL(String(value || '').trim());
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      throw new Error('Unsafe WordPress URL');
+    }
+
+    parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    const normalized = parsed.toString().replace(/\/$/, '');
+    if (!(await isSafePublicHttpsUrl(normalized))) {
+      throw new Error('Unsafe WordPress URL');
+    }
+    return normalized;
+  }
+
+  private wordpressFetch(url: string, options: RequestInit = {}) {
+    return this.fetch(url, {
+      ...options,
+      redirect: 'error',
+      // @ts-ignore — undici option, not in lib.dom fetch types
+      dispatcher: ssrfSafeDispatcher,
+    });
+  }
+
+  private safeFilename(value: string): string {
+    try {
+      return (
+        new URL(value).pathname.split('/').pop() || 'featured-image'
+      ).replace(/[^a-zA-Z0-9._-]/g, '_');
+    } catch {
+      return 'featured-image';
+    }
   }
 }

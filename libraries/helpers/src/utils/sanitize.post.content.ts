@@ -1,3 +1,4 @@
+// DesignerPRO additions — inline WordPress article media (2026-08-24).
 import DOMPurify from 'isomorphic-dompurify';
 
 const ALLOWED_TAGS = [
@@ -12,6 +13,8 @@ const ALLOWED_TAGS = [
   'h2',
   'h3',
   'span',
+  // DesignerPRO addition — article bodies can contain managed inline images.
+  'img',
 ];
 
 const ALLOWED_ATTR = [
@@ -21,6 +24,9 @@ const ALLOWED_ATTR = [
   'class',
   'data-mention-id',
   'data-mention-label',
+  // DesignerPRO addition — only safe, display-related image attributes.
+  'src',
+  'alt',
 ];
 
 export const sanitizePostContent = (value: unknown): string => {

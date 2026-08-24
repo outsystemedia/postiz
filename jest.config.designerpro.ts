@@ -18,6 +18,7 @@ const config: Config = {
     '<rootDir>/apps/backend/src/api/routes/no.auth.integrations.controller.designerpro.spec.ts',
     '<rootDir>/libraries/nestjs-libraries/src/database/prisma/integrations/integration.repository.designerpro.spec.ts',
     '<rootDir>/libraries/nestjs-libraries/src/integrations/social/wordpress.provider.designerpro.spec.ts',
+    '<rootDir>/libraries/helpers/src/utils/sanitize.post.content.designerpro.spec.ts',
   ],
   moduleNameMapper: {
     '^@gitroom/backend/(.*)$': '<rootDir>/apps/backend/src/$1',

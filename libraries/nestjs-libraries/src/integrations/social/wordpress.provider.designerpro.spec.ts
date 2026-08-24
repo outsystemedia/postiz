@@ -1,3 +1,4 @@
+// DesignerPRO additions — inline WordPress article media regression tests.
 import 'reflect-metadata';
 import dns from 'node:dns/promises';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
@@ -273,6 +274,122 @@ describe('WordpressProvider — DesignerPRO security additions', () => {
     });
   });
 
+  it('imports managed inline images and preserves their positions in the article', async () => {
+    const cover = 'https://postiz.example/uploads/cover.jpg';
+    const firstInline =
+      'https://postiz.example/uploads/first-inline.jpg?quality=80&format=webp';
+    const secondInline = 'https://postiz.example/uploads/second-inline.jpg';
+    const imageBlob = { type: 'image/jpeg' } as Blob;
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          post: { name: 'Posts', rest_base: 'posts' },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        blob: async () => imageBlob,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 100,
+          source_url: 'https://wp.example.com/uploads/cover.jpg',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        blob: async () => imageBlob,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 101,
+          source_url:
+            'https://wp.example.com/uploads/first-inline.jpg?converted=1&size=large',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        blob: async () => imageBlob,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 102,
+          source_url: 'https://wp.example.com/uploads/second-inline.jpg',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          id: 42,
+          link: 'https://wp.example.com/article-with-images',
+        }),
+      });
+    global.fetch = fetchMock as any;
+    const provider = new WordpressProvider();
+    const rawCode = Buffer.from(
+      JSON.stringify({
+        domain: 'https://wp.example.com',
+        username: 'editor',
+        password: 'application-password',
+      })
+    ).toString('base64');
+    const content = `<p>Before</p><img src="${firstInline.replace(
+      '&',
+      '&amp;'
+    )}" alt="First"><p>Between</p><img src="${secondInline}" alt="Second"><p>After</p>`;
+
+    await provider.post(
+      'integration_1',
+      AuthService.encryptSecret(rawCode),
+      [
+        {
+          id: 'post_1',
+          message: content,
+          media: [
+            { type: 'image', path: cover },
+            { type: 'image', path: firstInline },
+            { type: 'image', path: secondInline },
+          ],
+          settings: {
+            title: 'Article with images',
+            type: 'posts',
+            main_image: { path: cover },
+          },
+        },
+      ],
+      {} as any
+    );
+
+    const mediaUploads = fetchMock.mock.calls.filter(
+      ([url, options]) =>
+        url === 'https://wp.example.com/wp-json/wp/v2/media' &&
+        options?.method === 'POST'
+    );
+    expect(mediaUploads).toHaveLength(3);
+
+    const request = fetchMock.mock.calls.at(-1);
+    expect(request[0]).toBe('https://wp.example.com/wp-json/wp/v2/posts');
+    expect(JSON.parse(request[1].body)).toMatchObject({
+      content:
+        '<p>Before</p><img src="https://wp.example.com/uploads/first-inline.jpg?converted=1&amp;size=large" alt="First"><p>Between</p><img src="https://wp.example.com/uploads/second-inline.jpg" alt="Second"><p>After</p>',
+      featured_media: 100,
+    });
+    expect(JSON.parse(request[1].body).content).not.toContain('postiz.example');
+  });
+
   it('does not report completion when WordPress rejects the post', async () => {
     const fetchMock = jest
       .fn()
@@ -287,6 +404,7 @@ describe('WordpressProvider — DesignerPRO security additions', () => {
         ok: false,
         status: 400,
         json: async () => ({ message: 'Invalid category id' }),
+        text: async () => JSON.stringify({ message: 'Invalid category id' }),
       });
     global.fetch = fetchMock as any;
     const provider = new WordpressProvider();

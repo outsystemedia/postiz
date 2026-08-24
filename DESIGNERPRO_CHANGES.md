@@ -41,13 +41,16 @@ All changes below are also individually marked at the top of each file with a
 | `package.json` | **Modified.** Added a `test:designerpro-fork` script pointing at the config above. No existing scripts changed. | 2026-07-15 |
 | `apps/frontend/src/app/source/route.ts` | **New file.** A `/source` route on the running service that redirects to this repository, per AGPL-3.0 §13. | 2026-07-16 |
 | `apps/frontend/src/proxy.ts` | **Modified.** Added `/source` to the list of paths exempt from the auth-gate. Without this, the existing broad matcher redirected every unauthenticated request — including this one — to `/auth` before it ever reached the route above, defeating the point of offering it to network users who aren't logged in. No other behavior changed. | 2026-07-17 |
+| `libraries/helpers/src/utils/sanitize.post.content.ts` | **Modified.** Allows safe `img`, `src` and `alt` markup so the public API preserves managed inline article images while DOMPurify continues to remove unsafe markup and URLs. | 2026-08-24 |
+| `libraries/helpers/src/utils/sanitize.post.content.designerpro.spec.ts` | **New file.** Regression tests for safe inline-image sanitization. | 2026-08-24 |
+| `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.ts` | **Modified.** Imports managed inline article images into the WordPress Media Library and rewrites only their HTML `src` URLs before publishing; keeps the explicitly selected cover as the featured image. | 2026-08-24 |
+| `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.designerpro.spec.ts` | **Modified.** Regression test covering WordPress upload and in-place rewrite of multiple inline images. | 2026-08-24 |
 
 ## What is unchanged
 
 Everything else in this repository is unmodified upstream Postiz source at
 tag `v2.21.10`. In particular: no changes to the OAuth connection flow, to
-Temporal workflow/activity code, to the Prisma schema, or to any existing
-Public API endpoint's behavior.
+Temporal workflow/activity code, or to the Prisma schema.
 
 ## Getting the source
 

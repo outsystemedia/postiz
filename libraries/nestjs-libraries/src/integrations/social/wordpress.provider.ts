@@ -1,3 +1,4 @@
+// DesignerPRO additions — inline WordPress article media (2026-08-24).
 import {
   AuthTokenDetails,
   PostDetails,
@@ -22,6 +23,7 @@ type WordpressCredentials = {
 };
 
 type WordpressPostType = { id: string; name: string };
+type WordpressMediaUpload = { id: number; sourceUrl: string };
 const WORDPRESS_POST_TYPE_RE = /^[a-zA-Z0-9_-]{1,100}$/;
 const WORDPRESS_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -73,6 +75,17 @@ export class WordpressProvider
         value:
           'The connected user has insufficient permissions to create posts',
       };
+    }
+
+    // DesignerPRO addition — preserve the actionable WordPress REST error,
+    // including media-library failures from inline article images.
+    try {
+      const message = String(JSON.parse(body)?.message || '').trim();
+      if (message) {
+        return { type: 'bad-body', value: message.slice(0, 500) };
+      }
+    } catch {
+      // Non-JSON errors keep Postiz's existing generic handling.
     }
     return undefined;
   }
@@ -209,43 +222,41 @@ export class WordpressProvider
       throw new Error('Selected WordPress post type is not available');
     }
 
-    let mediaId = '';
-    const mainImagePath = postDetails?.[0]?.settings?.main_image?.path;
-    if (mainImagePath) {
-      const blob = await this.wordpressFetch(mainImagePath).then((response) =>
-        response.blob()
-      );
-      const filename = this.safeFilename(mainImagePath);
-      const mediaUploadResponse = await this.wordpressFetch(
-        `${body.domain}/wp-json/wp/v2/media`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Basic ${auth}`,
-            'Content-Disposition': `attachment; filename="${filename}"`,
-            'Content-Type': blob.type,
-          },
-          body: blob,
-        }
-      );
-      const mediaResponse = await mediaUploadResponse.json();
-      if (!mediaUploadResponse.ok || !mediaResponse?.id) {
-        throw new Error(
-          String(
-            mediaResponse?.message || 'WordPress rejected the featured image'
-          )
-        );
-      }
+    const settings = postDetails?.[0]?.settings;
+    const message = postDetails?.[0]?.message || '';
+    const mainImagePath = this.normalizeMediaPath(settings?.main_image?.path);
+    const inlineImagePaths = this.inlineImagePaths(message);
+    const availableInlineImagePaths = new Set(
+      (postDetails?.[0]?.media || [])
+        .filter((media) => media.type === 'image')
+        .map((media) => this.normalizeMediaPath(media.path))
+        .filter((path): path is string => Boolean(path))
+    );
+    const pathsToUpload = [
+      ...(mainImagePath ? [mainImagePath] : []),
+      ...[...inlineImagePaths].filter((path) =>
+        availableInlineImagePaths.has(path)
+      ),
+    ].filter((path, index, all) => all.indexOf(path) === index);
+    const uploadedMediaByPath = new Map<string, WordpressMediaUpload>();
 
-      mediaId = String(mediaResponse.id);
+    // DesignerPRO addition — upload body images to WordPress, then replace
+    // their temporary Postiz URLs in the HTML with the canonical WP URL.
+    for (const path of pathsToUpload) {
+      uploadedMediaByPath.set(
+        path,
+        await this.uploadWordpressMedia(path, body.domain, auth)
+      );
     }
 
-    const settings = postDetails?.[0]?.settings;
+    const featuredMediaId = mainImagePath
+      ? uploadedMediaByPath.get(mainImagePath)?.id
+      : undefined;
     const seoMeta = this.wordpressSeoMeta(settings);
     const meta = { ...seoMeta, ...(settings?.meta || {}) };
     const requestBody = {
       title: settings?.title,
-      content: postDetails?.[0]?.message,
+      content: this.replaceInlineImageSources(message, uploadedMediaByPath),
       slug:
         settings?.slug ||
         slugify(settings?.title || '', {
@@ -277,7 +288,7 @@ export class WordpressProvider
         : {}),
       ...(settings?.tags?.length ? { tags: settings.tags } : {}),
       ...(Object.keys(meta).length ? { meta } : {}),
-      ...(mediaId ? { featured_media: Number(mediaId) } : {}),
+      ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
     };
 
     const submitResponse = await this.wordpressFetch(
@@ -368,6 +379,124 @@ export class WordpressProvider
     } catch {
       return 'featured-image';
     }
+  }
+
+  private async uploadWordpressMedia(
+    path: string,
+    domain: string,
+    auth: string
+  ): Promise<WordpressMediaUpload> {
+    const sourceResponse = await this.wordpressFetch(path);
+    if (!sourceResponse.ok) {
+      throw new Error('Unable to download an image for WordPress');
+    }
+
+    const blob = await sourceResponse.blob();
+    const filename = this.safeFilename(path);
+    const mediaUploadResponse = await this.wordpressFetch(
+      `${domain}/wp-json/wp/v2/media`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Content-Type': blob.type,
+        },
+        body: blob,
+      }
+    );
+    const mediaResponse = await mediaUploadResponse.json();
+    const id = Number(mediaResponse?.id);
+    const sourceUrl = String(mediaResponse?.source_url || '').trim();
+    if (
+      !mediaUploadResponse.ok ||
+      !Number.isInteger(id) ||
+      id <= 0 ||
+      !sourceUrl
+    ) {
+      throw new Error(
+        String(mediaResponse?.message || 'WordPress rejected an article image')
+      );
+    }
+
+    return { id, sourceUrl };
+  }
+
+  private inlineImagePaths(content: string): Set<string> {
+    const paths = new Set<string>();
+    for (const tag of content.matchAll(/<img\b[^>]*>/gi)) {
+      const source = this.imageSourceFromTag(tag[0]);
+      if (source) {
+        paths.add(source);
+      }
+    }
+    return paths;
+  }
+
+  private replaceInlineImageSources(
+    content: string,
+    uploadedMediaByPath: ReadonlyMap<string, WordpressMediaUpload>
+  ): string {
+    return content.replace(/<img\b[^>]*>/gi, (tag) => {
+      const source = this.imageSourceFromTag(tag);
+      const uploaded = source ? uploadedMediaByPath.get(source) : undefined;
+      if (!uploaded) {
+        return tag;
+      }
+
+      return tag.replace(
+        /\bsrc\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/i,
+        `src="${this.escapeHtmlAttribute(uploaded.sourceUrl)}"`
+      );
+    });
+  }
+
+  private imageSourceFromTag(tag: string): string | undefined {
+    const match = tag.match(
+      /\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i
+    );
+    return this.normalizeMediaPath(match?.[1] || match?.[2] || match?.[3]);
+  }
+
+  private normalizeMediaPath(value: unknown): string | undefined {
+    const path = this.decodeHtmlEntities(String(value || '').trim());
+    return path || undefined;
+  }
+
+  private decodeHtmlEntities(value: string): string {
+    return value.replace(
+      /&(?:amp|quot|apos|lt|gt|#x([0-9a-f]+)|#(\d+));/gi,
+      (entity, hex, decimal) => {
+        const named: Record<string, string> = {
+          '&amp;': '&',
+          '&quot;': '"',
+          '&apos;': "'",
+          '&lt;': '<',
+          '&gt;': '>',
+        };
+        const normalized = entity.toLowerCase();
+        if (named[normalized]) {
+          return named[normalized];
+        }
+        const codePoint = Number.parseInt(hex || decimal, hex ? 16 : 10);
+        return Number.isFinite(codePoint)
+          ? String.fromCodePoint(codePoint)
+          : entity;
+      }
+    );
+  }
+
+  private escapeHtmlAttribute(value: string): string {
+    return value.replace(/[&"'<>]/g, (character) => {
+      const entities: Record<string, string> = {
+        '&': '&amp;',
+        '"': '&quot;',
+        "'": '&#39;',
+        '<': '&lt;',
+        '>': '&gt;',
+      };
+      return entities[character];
+    });
   }
 
   private wordpressSeoMeta(settings?: WordpressDto): Record<string, unknown> {

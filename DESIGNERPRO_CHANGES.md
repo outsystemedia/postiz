@@ -53,7 +53,7 @@ All changes below are also individually marked at the top of each file with a
 | `package.json` | **Modified.** Pins Prisma in the workspace dependency graph so the builder and traced runtime use the same committed CLI version rather than downloading one during build or startup. | 2026-08-24 |
 | `apps/frontend/next.config.js` | **Modified.** Enables Next's standalone output with the workspace root as its tracing boundary so frontend runtime files can be copied without the full monorepo dependency tree. | 2026-08-24 |
 | `var/docker/trace-runtime.mjs` | **New file.** Traces the compiled backend and orchestrator dependency closure, retains Prisma's dynamically loaded client/engines, and assembles the minimal Docker runtime filesystem. | 2026-08-24 |
-| `var/docker/runtime-processes.cjs` | **New file.** Starts backend, orchestrator and the Next standalone server directly under PM2. | 2026-08-24 |
+| `var/docker/runtime-processes.config.cjs` | **New file.** Starts backend, orchestrator and the Next standalone server directly under PM2; the `.config.cjs` suffix is required for PM2 7 to load it as an ecosystem declaration. | 2026-08-24 |
 | `var/docker/start-runtime.sh` | **New file.** Runs the existing Prisma schema push using the traced CLI, then launches the runtime PM2 declaration without requiring pnpm. | 2026-08-24 |
 
 ## What is unchanged

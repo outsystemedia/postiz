@@ -1,5 +1,5 @@
 // DesignerPRO addition — not upstream Postiz code.
-// PM2 declaration for the traced, dependency-minimal Docker runtime.
+// PM2 recognizes this filename as an ecosystem declaration.
 module.exports = {
   apps: [
     {

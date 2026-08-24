@@ -5,6 +5,8 @@
 // `GET /social/:integration`, and the new `GET /social/state/:state` lets a
 // Public API caller learn exactly which integration a connect attempt
 // resolved to (see the file for why a before/after list diff can't do this).
+// It also covers the capability handshake that lets DesignerPRO fail closed
+// while an older deployment lacks safe WordPress inline-media publishing.
 // Does not attempt to cover this file's pre-existing, untested upstream
 // methods.
 //
@@ -124,6 +126,16 @@ describe('PublicIntegrationsController — DesignerPRO connect-state additions',
     await ioRedis.del('integration:state_1');
     await ioRedis.del('login:state_1');
     await ioRedis.del('connect-result:state_1');
+  });
+
+  describe('GET /capabilities', () => {
+    it('advertises WordPress inline-media support', async () => {
+      const { controller } = buildController();
+
+      await expect(controller.getPublicationCapabilities(ORG)).resolves.toEqual(
+        { wordpressInlineMedia: true }
+      );
+    });
   });
 
   describe('GET /social/:integration', () => {

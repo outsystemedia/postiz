@@ -262,6 +262,17 @@ export class PublicIntegrationsController {
     return { connected: true };
   }
 
+  /**
+   * DesignerPRO capability handshake. Keeping this opt-in means a caller can
+   * fail closed while an older Postiz deployment is still running instead of
+   * silently publishing a WordPress article without its inline media.
+   */
+  @Get('/capabilities')
+  async getPublicationCapabilities(@GetOrgFromRequest() org: Organization) {
+    Sentry.metrics.count('public_api-request', 1);
+    return { wordpressInlineMedia: true };
+  }
+
   @Get('/groups')
   async listGroups(@GetOrgFromRequest() org: Organization) {
     Sentry.metrics.count('public_api-request', 1);

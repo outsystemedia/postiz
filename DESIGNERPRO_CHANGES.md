@@ -43,8 +43,12 @@ All changes below are also individually marked at the top of each file with a
 | `apps/frontend/src/proxy.ts` | **Modified.** Added `/source` to the list of paths exempt from the auth-gate. Without this, the existing broad matcher redirected every unauthenticated request — including this one — to `/auth` before it ever reached the route above, defeating the point of offering it to network users who aren't logged in. No other behavior changed. | 2026-07-17 |
 | `libraries/helpers/src/utils/sanitize.post.content.ts` | **Modified.** Allows safe `img`, `src` and `alt` markup so the public API preserves managed inline article images while DOMPurify continues to remove unsafe markup and URLs. | 2026-08-24 |
 | `libraries/helpers/src/utils/sanitize.post.content.designerpro.spec.ts` | **New file.** Regression tests for safe inline-image sanitization. | 2026-08-24 |
+| `libraries/helpers/src/utils/strip.html.validation.ts` | **Modified.** Preserves managed inline images through the publication worker for HTML providers, retaining only safe `src` and `alt` attributes. | 2026-08-24 |
+| `libraries/helpers/src/utils/strip.html.validation.designerpro.spec.ts` | **New file.** Regression test for safe inline-image preservation by the worker formatter. | 2026-08-24 |
 | `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.ts` | **Modified.** Imports managed inline article images into the WordPress Media Library and rewrites only their HTML `src` URLs before publishing; keeps the explicitly selected cover as the featured image. | 2026-08-24 |
 | `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.designerpro.spec.ts` | **Modified.** Regression test covering WordPress upload and in-place rewrite of multiple inline images. | 2026-08-24 |
+| `apps/backend/src/public-api/routes/v1/public.integrations.controller.ts` | **Modified.** Adds an authenticated capability handshake so DesignerPRO can reject inline-WordPress publication while an older worker is still deployed. | 2026-08-24 |
+| `apps/backend/src/public-api/routes/v1/public.integrations.controller.designerpro.spec.ts` | **Modified.** Covers the inline-WordPress capability response. | 2026-08-24 |
 
 ## What is unchanged
 

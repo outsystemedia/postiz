@@ -1,6 +1,55 @@
 import striptags from 'striptags';
 import { parseFragment, serialize } from 'parse5';
 
+const SAFE_INLINE_IMAGE_SRC_RE = /^(?:https?:|\/)/i;
+const HTML_PUBLISHER_TAGS = [
+  'ul',
+  'li',
+  'h1',
+  'h2',
+  'h3',
+  'p',
+  'strong',
+  'u',
+  'a',
+  // DesignerPRO addition — retain managed article images for HTML providers.
+  'img',
+];
+
+type HtmlNode = {
+  nodeName?: string;
+  attrs?: Array<{ name: string; value: string }>;
+  childNodes?: HtmlNode[];
+};
+
+// striptags preserves every attribute on an allowed tag. Keep its historic
+// behaviour for existing text tags, but restrict images to the two attributes
+// an article body needs before an HTML provider receives the content.
+const sanitizeInlineImageAttributes = (value: string): string => {
+  const fragment = parseFragment(value) as unknown as HtmlNode;
+  const visit = (node: HtmlNode) => {
+    if (node.nodeName === 'img') {
+      node.attrs = (node.attrs || []).flatMap(({ name, value: attribute }) => {
+        const normalizedName = name.toLowerCase();
+        if (normalizedName === 'alt') {
+          return [{ name: 'alt', value: attribute }];
+        }
+        if (normalizedName === 'src') {
+          const source = attribute.trim();
+          return SAFE_INLINE_IMAGE_SRC_RE.test(source)
+            ? [{ name: 'src', value: source }]
+            : [];
+        }
+        return [];
+      });
+    }
+    (node.childNodes || []).forEach(visit);
+  };
+
+  visit(fragment);
+  return serialize(fragment as any);
+};
+
 const bold = {
   a: '𝗮',
   b: '𝗯',
@@ -156,17 +205,12 @@ export const stripHtmlValidation = (
   }
 
   if (type === 'html') {
-    return striptags(convertMention(value, convertMentionFunction), [
-      'ul',
-      'li',
-      'h1',
-      'h2',
-      'h3',
-      'p',
-      'strong',
-      'u',
-      'a',
-    ])
+    return sanitizeInlineImageAttributes(
+      striptags(
+        convertMention(value, convertMentionFunction),
+        HTML_PUBLISHER_TAGS
+      )
+    )
       .replace(/&gt;/gi, '>')
       .replace(/&lt;/gi, '<')
       .replace(/&amp;/gi, '&')

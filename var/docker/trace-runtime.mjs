@@ -100,6 +100,7 @@ for (const relativePath of [
 	'node_modules/@prisma',
 	'node_modules/prisma',
 	'node_modules/@temporalio',
+	'node_modules/tslib',
 	'node_modules/bcrypt',
 	'node_modules/canvas',
 	'node_modules/sharp',

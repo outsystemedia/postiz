@@ -49,6 +49,8 @@ All changes below are also individually marked at the top of each file with a
 | `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.designerpro.spec.ts` | **Modified.** Regression test covering WordPress upload and in-place rewrite of multiple inline images. | 2026-08-24 |
 | `apps/backend/src/public-api/routes/v1/public.integrations.controller.ts` | **Modified.** Adds an authenticated capability handshake so DesignerPRO can reject inline-WordPress publication while an older worker is still deployed. | 2026-08-24 |
 | `apps/backend/src/public-api/routes/v1/public.integrations.controller.designerpro.spec.ts` | **Modified.** Covers the inline-WordPress capability response. | 2026-08-24 |
+| `Dockerfile.dev` | **Modified.** Uses the committed lockfile during container dependency installation, avoiding unpinned dependency resolution on redeploy. | 2026-08-24 |
+| `package.json` | **Modified.** Runs Prisma from the already-installed, version-locked dependency rather than downloading it at image build and container startup. | 2026-08-24 |
 
 ## What is unchanged
 

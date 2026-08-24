@@ -1,8 +1,17 @@
 // @ts-check
 import { withSentryConfig } from '@sentry/nextjs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The Docker runtime launches the traced standalone server instead of
+  // carrying the monorepo's complete node_modules tree. Resolve traces from
+  // the workspace root because this app imports shared code from there.
+  output: 'standalone',
+  outputFileTracingRoot: path.join(configDirectory, '../../'),
   experimental: {
     proxyTimeout: 90_000,
   },

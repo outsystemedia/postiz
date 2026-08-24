@@ -49,8 +49,12 @@ All changes below are also individually marked at the top of each file with a
 | `libraries/nestjs-libraries/src/integrations/social/wordpress.provider.designerpro.spec.ts` | **Modified.** Regression test covering WordPress upload and in-place rewrite of multiple inline images. | 2026-08-24 |
 | `apps/backend/src/public-api/routes/v1/public.integrations.controller.ts` | **Modified.** Adds an authenticated capability handshake so DesignerPRO can reject inline-WordPress publication while an older worker is still deployed. | 2026-08-24 |
 | `apps/backend/src/public-api/routes/v1/public.integrations.controller.designerpro.spec.ts` | **Modified.** Covers the inline-WordPress capability response. | 2026-08-24 |
-| `Dockerfile.dev` | **Modified.** Uses a multi-stage build that exports only production dependencies and runtime artifacts, preventing the source-build image from exceeding the deployment timeout during layer unpacking. | 2026-08-24 |
-| `package.json` | **Modified.** Runs Prisma from the already-installed, version-locked dependency rather than downloading it at image build and container startup; Prisma is declared as a production dependency because startup runs `prisma db push`. | 2026-08-24 |
+| `Dockerfile.dev` | **Modified.** Builds the full workspace only in the builder stage, then copies a file-traced backend/orchestrator runtime plus Next's standalone frontend into the final image. This avoids exporting the root workspace's multi-gigabyte dependency tree during deployment. | 2026-08-24 |
+| `package.json` | **Modified.** Pins Prisma in the workspace dependency graph so the builder and traced runtime use the same committed CLI version rather than downloading one during build or startup. | 2026-08-24 |
+| `apps/frontend/next.config.js` | **Modified.** Enables Next's standalone output with the workspace root as its tracing boundary so frontend runtime files can be copied without the full monorepo dependency tree. | 2026-08-24 |
+| `var/docker/trace-runtime.mjs` | **New file.** Traces the compiled backend and orchestrator dependency closure, retains Prisma's dynamically loaded client/engines, and assembles the minimal Docker runtime filesystem. | 2026-08-24 |
+| `var/docker/runtime-processes.cjs` | **New file.** Starts backend, orchestrator and the Next standalone server directly under PM2. | 2026-08-24 |
+| `var/docker/start-runtime.sh` | **New file.** Runs the existing Prisma schema push using the traced CLI, then launches the runtime PM2 declaration without requiring pnpm. | 2026-08-24 |
 
 ## What is unchanged
 

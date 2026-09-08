@@ -1,3 +1,4 @@
+import { mastodonConnection } from './credentials/mastodon.connection';
 import { nostrConnection } from './credentials/nostr.connection';
 import { withCredentialConnection } from './credentials/credential.connection';
 import { blueskyConnection } from './credentials/bluesky.connection';
@@ -58,7 +59,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new SlackProvider(),
   new KickProvider(),
   new TwitchProvider(),
-  new MastodonProvider(),
+  withCredentialConnection(new MastodonProvider(), mastodonConnection),
   withCredentialConnection(new BlueskyProvider(), blueskyConnection),
   new LemmyProvider(),
   new FarcasterProvider(),

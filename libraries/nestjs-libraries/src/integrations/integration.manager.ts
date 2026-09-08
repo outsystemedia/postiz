@@ -1,3 +1,4 @@
+import { hashnodeConnection } from './credentials/hashnode.connection';
 import { devtoConnection } from './credentials/devto.connection';
 import { discordConnection } from './credentials/discord.connection';
 import { telegramConnection } from './credentials/telegram.connection';
@@ -72,7 +73,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new VkProvider(),
   new MediumProvider(),
   withCredentialConnection(new DevToProvider(), devtoConnection),
-  new HashnodeProvider(),
+  withCredentialConnection(new HashnodeProvider(), hashnodeConnection),
   new WordpressProvider(),
   new ListmonkProvider(),
   new MoltbookProvider(),

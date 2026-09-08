@@ -1,3 +1,4 @@
+import { lemmyConnection } from './credentials/lemmy.connection';
 import { mastodonConnection } from './credentials/mastodon.connection';
 import { nostrConnection } from './credentials/nostr.connection';
 import { withCredentialConnection } from './credentials/credential.connection';
@@ -61,7 +62,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new TwitchProvider(),
   withCredentialConnection(new MastodonProvider(), mastodonConnection),
   withCredentialConnection(new BlueskyProvider(), blueskyConnection),
-  new LemmyProvider(),
+  withCredentialConnection(new LemmyProvider(), lemmyConnection),
   new FarcasterProvider(),
   new TelegramProvider(),
   withCredentialConnection(new NostrProvider(), nostrConnection),

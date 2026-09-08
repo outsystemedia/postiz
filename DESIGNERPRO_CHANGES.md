@@ -68,3 +68,18 @@ You are already looking at it. This repository's full history, including
 every commit that makes up the above, is public. If you are interacting with
 a deployment of this software over a network and were given a URL to a
 private copy of it instead, ask the operator for a link to this repository.
+
+## Self-serve credential channels (2026-09-08)
+
+Added `libraries/nestjs-libraries/src/integrations/credentials/` adapters for
+Bluesky, Nostr, Mastodon, Lemmy, Telegram, Discord, Dev.to and Hashnode, registered
+alongside each provider's existing behavior. The public integrations controller
+adds authenticated `POST /public/v1/social/:provider/credentials`; the service
+and repository persist brand-scoped identities and AES-GCM credential envelopes.
+No schema change or rewrite of existing integration rows is required. Telegram's
+existing media sender now reads an instance bot client, retaining the global bot
+for legacy connections. Sentry telemetry redacts credentials and token-bearing
+URLs. Staging setup and manual checks are documented in `ops/selfserve-staging`.
+
+Hashnode's May 2026 removal of free API access prevents the original "no paid
+API" requirement for that channel. Its current PAT flow reports the limitation.

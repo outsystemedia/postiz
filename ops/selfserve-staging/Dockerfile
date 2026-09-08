@@ -1,0 +1,2 @@
+FROM jtgretlju47ypidilih8opxi_postiz:d48e9556f173f02eb431a5122043de1d7bbcde7d
+COPY patch/ /app/

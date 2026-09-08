@@ -23,8 +23,8 @@ export class IntegrationRepository {
   // credentials are never overwritten by the self-serve endpoint.
   saveCredentialIntegration(org: string, groupId: string, internalId: string, provider: string, name: string, username: string, token: string) {
     const data = { name, profile: username, token, refreshToken: '',
-      tokenExpiration: null, customInstanceDetails: null, refreshNeeded: false,
-      deletedAt: null, disabled: false, customerId: groupId };
+      tokenExpiration: null as Date | null, customInstanceDetails: null as string | null, refreshNeeded: false,
+      deletedAt: null as Date | null, disabled: false, customerId: groupId };
     return this._integration.model.integration.upsert({
       where: { organizationId_internalId: { organizationId: org, internalId } },
       create: { ...data, organizationId: org, internalId, rootInternalId: internalId, providerIdentifier: provider, type: 'social', additionalSettings: '[]' },

@@ -383,7 +383,7 @@ export class PublicIntegrationsController {
       const internalId = 'credentials:' + createHash('sha256').update(JSON.stringify([provider, body.groupId, auth.id])).digest('hex');
       const token = AuthService.encryptSecret(JSON.stringify({ ...auth, version: 1, provider }));
       const saved = await this._integrationService.saveCredentialIntegration(org.id, body.groupId, internalId, provider, auth.name, auth.username, token);
-      return { status: 'connected', integration: { id: saved.id, name: saved.name, identifier: saved.providerIdentifier, picture: null } };
+      return { status: 'connected', integration: { id: saved.id, name: saved.name, identifier: saved.providerIdentifier, picture: null as string | null } };
     } catch (err) {
       // Never forward SDK exceptions: they can contain headers, URLs and keys.
       throw new HttpException({ msg: err instanceof CredentialError ? err.message : 'Não foi possível validar a conexão. Verifique os dados e tente novamente.' }, err instanceof CredentialError ? err.status : 502);

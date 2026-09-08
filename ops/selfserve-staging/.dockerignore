@@ -1,0 +1,4 @@
+.env
+*.cjs
+README.md
+compose.yaml

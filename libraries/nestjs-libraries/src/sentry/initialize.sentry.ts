@@ -1,3 +1,4 @@
+import { redactCredentialTelemetry } from '../integrations/credentials/credential.redaction';
 import * as Sentry from '@sentry/nestjs';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import { capitalize } from 'lodash';
@@ -9,6 +10,11 @@ export const initializeSentry = (appName: string, allowLogs = false) => {
 
   try {
     Sentry.init({
+      sendDefaultPii: false,
+      beforeSend: event => redactCredentialTelemetry(event),
+      beforeSendTransaction: event => redactCredentialTelemetry(event),
+      beforeBreadcrumb: breadcrumb => redactCredentialTelemetry(breadcrumb),
+      beforeSendLog: log => redactCredentialTelemetry(log),
       initialScope: {
         tags: {
           service: appName,

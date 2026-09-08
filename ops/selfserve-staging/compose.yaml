@@ -1,0 +1,93 @@
+name: postiz-selfserve-staging
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: staging
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD}
+      POSTGRES_DB: postiz_staging
+    volumes: [postgres:/var/lib/postgresql/data]
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U staging -d postiz_staging]
+      interval: 5s
+      retries: 20
+  redis:
+    image: redis:7.2
+    mem_limit: 256m
+    cpus: 0.25
+  temporal-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${STAGING_TEMPORAL_PASSWORD}
+    volumes: [temporal-db:/var/lib/postgresql/data]
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U temporal]
+      interval: 5s
+      retries: 20
+  elasticsearch:
+    image: elasticsearch:7.17.27
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: -Xms256m -Xmx256m
+      xpack.security.enabled: 'false'
+      cluster.routing.allocation.disk.threshold_enabled: 'false'
+    mem_limit: 1g
+    cpus: 0.5
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS http://localhost:9200/_cluster/health']
+      interval: 10s
+      retries: 30
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    environment:
+      DB: postgres12
+      DB_PORT: '5432'
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${STAGING_TEMPORAL_PASSWORD}
+      POSTGRES_SEEDS: temporal-db
+      BIND_ON_IP: 0.0.0.0
+      ENABLE_ES: 'true'
+      ES_SEEDS: elasticsearch
+      ES_VERSION: v7
+    depends_on:
+      temporal-db: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+    mem_limit: 1g
+    cpus: 1.0
+  postiz:
+    build: .
+    image: postiz-selfserve-staging:review
+    environment:
+      NODE_ENV: production
+      MAIN_URL: http://127.0.0.1:4017
+      FRONTEND_URL: http://127.0.0.1:4017
+      NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:4017/api
+      BACKEND_INTERNAL_URL: http://localhost:3000
+      JWT_SECRET: ${STAGING_JWT_SECRET}
+      DATABASE_URL: postgresql://staging:${STAGING_DB_PASSWORD}@postgres:5432/postiz_staging
+      REDIS_URL: redis://redis:6379
+      TEMPORAL_ADDRESS: temporal:7233
+      IS_GENERAL: 'true'
+      DISABLE_REGISTRATION: 'true'
+      STORAGE_PROVIDER: local
+      UPLOAD_DIRECTORY: /uploads
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: /uploads
+      API_LIMIT: 100
+      NX_ADD_PLUGINS: 'false'
+    volumes: [uploads:/uploads]
+    ports: ['127.0.0.1:4017:5000', '127.0.0.1:3017:3000']
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      temporal: { condition: service_started }
+    mem_limit: 2g
+    cpus: 1.0
+volumes:
+  postgres:
+  temporal-db:
+  uploads:

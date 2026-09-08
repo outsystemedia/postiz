@@ -1,3 +1,4 @@
+import { nostrConnection } from './credentials/nostr.connection';
 import { withCredentialConnection } from './credentials/credential.connection';
 import { blueskyConnection } from './credentials/bluesky.connection';
 import 'reflect-metadata';
@@ -62,7 +63,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new LemmyProvider(),
   new FarcasterProvider(),
   new TelegramProvider(),
-  new NostrProvider(),
+  withCredentialConnection(new NostrProvider(), nostrConnection),
   new VkProvider(),
   new MediumProvider(),
   new DevToProvider(),

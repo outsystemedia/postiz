@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
+import { CredentialConnection, CredentialError } from '@gitroom/nestjs-libraries/integrations/credentials/credential.connection';
 import {
   Body,
   Controller,
@@ -362,6 +365,31 @@ export class PublicIntegrationsController {
    * without exposing Postiz's internal no-auth callback to the caller.
    * The state is both organization- and provider-bound by getIntegrationUrl.
    */
+  @Post('/social/:provider/credentials')
+  @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  async connectCredentials(@GetOrgFromRequest() org: Organization, @Param('provider') provider: string,
+    @Body() body: { groupId?: string; credentials?: Record<string, string> }) {
+    const connection: CredentialConnection | undefined = (this._integrationManager.getSocialIntegration(provider) as any)?.credentialConnection;
+    if (!connection) throw new HttpException({ msg: 'Este canal não aceita conexão por credenciais.' }, 400);
+    if (typeof body?.groupId !== 'string' || !body.groupId || body.groupId.length > 200 ||
+        !body.credentials || Array.isArray(body.credentials) || typeof body.credentials !== 'object' ||
+        Object.keys(body.credentials).length > 12 || Object.values(body.credentials).some(v => typeof v !== 'string' || v.length > 8192)) {
+      throw new HttpException({ msg: 'Dados de conexão inválidos.' }, 400);
+    }
+    if (!(await this._integrationService.getCustomer(org.id, body.groupId))) throw new HttpException({ msg: 'Marca não encontrada.' }, 404);
+    try {
+      const auth = await connection.authenticate(body.credentials);
+      if (!auth.id || !auth.name) throw new CredentialError('Não foi possível validar a conta.');
+      const internalId = 'credentials:' + createHash('sha256').update(JSON.stringify([provider, body.groupId, auth.id])).digest('hex');
+      const token = AuthService.encryptSecret(JSON.stringify({ ...auth, version: 1, provider }));
+      const saved = await this._integrationService.saveCredentialIntegration(org.id, body.groupId, internalId, provider, auth.name, auth.username, token);
+      return { status: 'connected', integration: { id: saved.id, name: saved.name, identifier: saved.providerIdentifier, picture: null } };
+    } catch (err) {
+      // Never forward SDK exceptions: they can contain headers, URLs and keys.
+      throw new HttpException({ msg: err instanceof CredentialError ? err.message : 'Não foi possível validar a conexão. Verifique os dados e tente novamente.' }, err instanceof CredentialError ? err.status : 502);
+    }
+  }
+
   @Post('/social/wordpress/connect')
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
   async connectWordpress(

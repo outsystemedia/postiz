@@ -1,3 +1,5 @@
+import { withCredentialConnection } from './credentials/credential.connection';
+import { blueskyConnection } from './credentials/bluesky.connection';
 import 'reflect-metadata';
 
 import { Injectable } from '@nestjs/common';
@@ -56,7 +58,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new KickProvider(),
   new TwitchProvider(),
   new MastodonProvider(),
-  new BlueskyProvider(),
+  withCredentialConnection(new BlueskyProvider(), blueskyConnection),
   new LemmyProvider(),
   new FarcasterProvider(),
   new TelegramProvider(),

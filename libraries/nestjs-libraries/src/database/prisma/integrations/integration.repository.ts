@@ -19,6 +19,19 @@ export class IntegrationRepository {
     private _mentions: PrismaRepository<'mentions'>
   ) {}
 
+  // New credential connections are scoped to a brand group. Legacy IDs and
+  // credentials are never overwritten by the self-serve endpoint.
+  saveCredentialIntegration(org: string, groupId: string, internalId: string, provider: string, name: string, username: string, token: string) {
+    const data = { name, profile: username, token, refreshToken: '',
+      tokenExpiration: null, customInstanceDetails: null, refreshNeeded: false,
+      deletedAt: null, disabled: false, customerId: groupId };
+    return this._integration.model.integration.upsert({
+      where: { organizationId_internalId: { organizationId: org, internalId } },
+      create: { ...data, organizationId: org, internalId, rootInternalId: internalId, providerIdentifier: provider, type: 'social', additionalSettings: '[]' },
+      update: data,
+    });
+  }
+
   getMentions(platform: string, q: string) {
     return this._mentions.model.mentions.findMany({
       where: {

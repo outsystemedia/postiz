@@ -13,6 +13,7 @@ const config: Config = {
   rootDir: '.',
   testEnvironment: 'node',
   testMatch: [
+    '<rootDir>/libraries/nestjs-libraries/src/integrations/credentials/*.spec.ts',
     '<rootDir>/apps/backend/src/public-api/routes/v1/public.groups.controller.spec.ts',
     '<rootDir>/apps/backend/src/public-api/routes/v1/public.integrations.controller.designerpro.spec.ts',
     '<rootDir>/apps/backend/src/api/routes/no.auth.integrations.controller.designerpro.spec.ts',

@@ -84,6 +84,10 @@ export class IntegrationService {
     return this._integrationRepository.checkPreviousConnections(org, id);
   }
 
+  saveCredentialIntegration(org: string, groupId: string, internalId: string, provider: string, name: string, username: string, token: string) {
+    return this._integrationRepository.saveCredentialIntegration(org, groupId, internalId, provider, name, username, token);
+  }
+
   async createOrUpdateIntegration(
     additionalSettings:
       | {

@@ -1,3 +1,4 @@
+import { discordConnection } from './credentials/discord.connection';
 import { telegramConnection } from './credentials/telegram.connection';
 import { lemmyConnection } from './credentials/lemmy.connection';
 import { mastodonConnection } from './credentials/mastodon.connection';
@@ -57,7 +58,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   new TiktokProvider(),
   new PinterestProvider(),
   new DribbbleProvider(),
-  new DiscordProvider(),
+  withCredentialConnection(new DiscordProvider(), discordConnection),
   new SlackProvider(),
   new KickProvider(),
   new TwitchProvider(),

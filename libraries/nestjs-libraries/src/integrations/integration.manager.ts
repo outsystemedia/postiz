@@ -1,3 +1,4 @@
+import { devtoConnection } from './credentials/devto.connection';
 import { discordConnection } from './credentials/discord.connection';
 import { telegramConnection } from './credentials/telegram.connection';
 import { lemmyConnection } from './credentials/lemmy.connection';
@@ -70,7 +71,7 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
   withCredentialConnection(new NostrProvider(), nostrConnection),
   new VkProvider(),
   new MediumProvider(),
-  new DevToProvider(),
+  withCredentialConnection(new DevToProvider(), devtoConnection),
   new HashnodeProvider(),
   new WordpressProvider(),
   new ListmonkProvider(),

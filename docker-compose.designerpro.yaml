@@ -78,6 +78,19 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+    # The public nginx/backend can be alive while the publication workers are
+    # absent. Check the orchestrator directly so deployments expose that
+    # degraded state instead of looking healthy with posts stuck in QUEUE.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3002/health/status').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 15m
 
   postiz-postgres:
     image: postgres:17-alpine

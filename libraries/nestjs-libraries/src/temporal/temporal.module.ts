@@ -1,3 +1,5 @@
+// DesignerPRO modification: publication workers fail closed when Temporal is
+// unavailable during startup.
 import { TemporalModule } from 'nestjs-temporal-core';
 import { socialIntegrationList } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 
@@ -8,6 +10,11 @@ export const getTemporalModule = (
 ) => {
   return TemporalModule.register({
     isGlobal: true,
+    // The API can remain available during a brief Temporal outage, but the
+    // orchestrator must never report itself as started without workers.  The
+    // library otherwise treats a failed NativeConnection as optional and
+    // leaves every publication queued forever until the process is restarted.
+    allowConnectionFailure: !isWorkers,
     connection: {
       address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
       ...process.env.TEMPORAL_TLS === 'true' ? {tls: true} : {},

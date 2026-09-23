@@ -17,6 +17,7 @@ const config: Config = {
     '<rootDir>/apps/backend/src/public-api/routes/v1/public.groups.controller.spec.ts',
     '<rootDir>/apps/backend/src/public-api/routes/v1/public.integrations.controller.designerpro.spec.ts',
     '<rootDir>/apps/backend/src/api/routes/no.auth.integrations.controller.designerpro.spec.ts',
+    '<rootDir>/apps/orchestrator/src/health.controller.spec.ts',
     '<rootDir>/libraries/nestjs-libraries/src/database/prisma/integrations/integration.repository.designerpro.spec.ts',
     '<rootDir>/libraries/nestjs-libraries/src/integrations/social/wordpress.provider.designerpro.spec.ts',
     '<rootDir>/libraries/helpers/src/utils/sanitize.post.content.designerpro.spec.ts',
@@ -24,6 +25,7 @@ const config: Config = {
   ],
   moduleNameMapper: {
     '^@gitroom/backend/(.*)$': '<rootDir>/apps/backend/src/$1',
+    '^@gitroom/orchestrator/(.*)$': '<rootDir>/apps/orchestrator/src/$1',
     '^@gitroom/nestjs-libraries/(.*)$':
       '<rootDir>/libraries/nestjs-libraries/src/$1',
     '^@gitroom/helpers/(.*)$': '<rootDir>/libraries/helpers/src/$1',

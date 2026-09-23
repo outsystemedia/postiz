@@ -1,9 +1,14 @@
+// DesignerPRO modification: health requires active publication workers, not
+// merely a reachable Temporal server.
 import { Controller, Get, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { Connection } from '@temporalio/client';
+import { TemporalService } from 'nestjs-temporal-core';
 
 @Controller('health')
 export class HealthController {
+  constructor(private readonly temporalService: TemporalService) {}
+
   @Get('/status')
   async getHealthStatus(@Res() res: Response) {
     let connection: Connection | undefined;
@@ -24,7 +29,38 @@ export class HealthController {
           setTimeout(() => reject(new Error('timeout')), 10000)
         ),
       ]);
-      return res.status(200).json({ status: 'ok' });
+
+      const workers = this.temporalService
+        .getWorkerManager()
+        .getAllWorkers();
+      const wordpress = workers.workers.get('wordpress');
+      const allWorkersHealthy =
+        workers.totalWorkers > 0 &&
+        workers.runningWorkers === workers.totalWorkers &&
+        workers.healthyWorkers === workers.totalWorkers;
+
+      if (!allWorkersHealthy || !wordpress?.isHealthy) {
+        return res.status(503).json({
+          status: 'error',
+          reason: 'workers_unavailable',
+          workers: {
+            total: workers.totalWorkers,
+            running: workers.runningWorkers,
+            healthy: workers.healthyWorkers,
+            wordpress: wordpress?.isHealthy === true,
+          },
+        });
+      }
+
+      return res.status(200).json({
+        status: 'ok',
+        workers: {
+          total: workers.totalWorkers,
+          running: workers.runningWorkers,
+          healthy: workers.healthyWorkers,
+          wordpress: true,
+        },
+      });
     } catch {
       return res.status(500).json({ status: 'error' });
     } finally {

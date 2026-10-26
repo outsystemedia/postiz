@@ -273,7 +273,12 @@ export class PublicIntegrationsController {
   @Get('/capabilities')
   async getPublicationCapabilities(@GetOrgFromRequest() org: Organization) {
     Sentry.metrics.count('public_api-request', 1);
-    return { wordpressInlineMedia: true };
+    return {
+      wordpressInlineMedia: true,
+      metaAdvancedPublishing: true,
+      metaFollowUpComments: true,
+      instagramAudioSearch: true,
+    };
   }
 
   @Get('/groups')
@@ -597,7 +602,7 @@ export class PublicIntegrationsController {
   async getIntegrationSettings(
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
-  ) {
+  ): Promise<{ output: Record<string, unknown> }> {
     Sentry.metrics.count('public_api-request', 1);
     const loadIntegration = await this._integrationService.getIntegrationById(
       org.id,

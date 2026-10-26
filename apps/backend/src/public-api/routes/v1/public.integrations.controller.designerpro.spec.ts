@@ -133,7 +133,12 @@ describe('PublicIntegrationsController — DesignerPRO connect-state additions',
       const { controller } = buildController();
 
       await expect(controller.getPublicationCapabilities(ORG)).resolves.toEqual(
-        { wordpressInlineMedia: true }
+        {
+          wordpressInlineMedia: true,
+          metaAdvancedPublishing: true,
+          metaFollowUpComments: true,
+          instagramAudioSearch: true,
+        }
       );
     });
   });

@@ -51,6 +51,12 @@ export class InstagramStandaloneProvider
     if (!firstPost?.length) {
       return 'Should have at least one media';
     }
+    if (settings?.post_type === 'story' && firstPost.length !== 1) {
+      return 'Instagram Stories support exactly one media attachment per publication';
+    }
+    if (settings?.audio?.id) {
+      return 'Audio search is only supported by Instagram connected through Facebook';
+    }
     if (settings?.is_trial_reel) {
       if ((firstPost?.length ?? 0) > 1) {
         return 'Trial Reels can only have one video';

@@ -6,7 +6,10 @@ import { ValidationTypes } from 'class-validator';
 // @ts-ignore
 import { defaultMetadataStorage } from 'class-transformer/cjs/storage';
 
-export function getValidationSchemas() {
+// Keep the public type independent from openapi3-ts's physical install path.
+// This matters in pnpm worktrees, where TypeScript otherwise emits TS2742
+// while generating backend declarations from a shared node_modules tree.
+export function getValidationSchemas(): Record<string, unknown> {
   return validationMetadatasToSchemas({
     classTransformerMetadataStorage: defaultMetadataStorage,
     additionalConverters: {

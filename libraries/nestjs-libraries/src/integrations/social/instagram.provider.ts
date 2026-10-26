@@ -36,7 +36,9 @@ export class InstagramProvider
     'pages_show_list',
     'pages_read_engagement',
     'pages_manage_posts',
+    'pages_manage_engagement',
     'instagram_content_publish',
+    'instagram_manage_comments',
   ];
   override maxConcurrentJob = 400;
   editor = 'normal' as const;
@@ -51,6 +53,9 @@ export class InstagramProvider
   ): Promise<string | true> {
     if (!firstPost?.length) {
       return 'Should have at least one media';
+    }
+    if (settings?.post_type === 'story' && firstPost.length !== 1) {
+      return 'Instagram Stories support exactly one media attachment per publication';
     }
     if (firstPost.length > 10) {
       return 'Instagram carousel only supports up to 10 media attachments';

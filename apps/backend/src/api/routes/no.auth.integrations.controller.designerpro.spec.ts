@@ -238,6 +238,8 @@ describe('NoAuthIntegrationsController — Meta data deletion callback', () => {
     process.env.NEXT_PUBLIC_BACKEND_URL = 'https://postiz.example.com/api';
     delete process.env.INSTAGRAM_APP_ID;
     delete process.env.INSTAGRAM_APP_SECRET;
+    delete process.env.THREADS_APP_ID;
+    delete process.env.THREADS_APP_SECRET;
   });
 
   afterAll(() => {
@@ -297,5 +299,45 @@ describe('NoAuthIntegrationsController — Meta data deletion callback', () => {
       )
     ).rejects.toMatchObject({ status: 400 });
     expect(integrationService.deleteMetaUserData).not.toHaveBeenCalled();
+  });
+
+  it('routes a Threads deletion request when products share an app secret', async () => {
+    process.env.THREADS_APP_ID = 'threads-789';
+    process.env.THREADS_APP_SECRET = 'meta-test-secret';
+    const { controller, integrationService } = buildController();
+
+    await controller.deleteMetaData(
+      signedRequest({
+        algorithm: 'HMAC-SHA256',
+        app_id: 'threads-789',
+        user_id: 'threads-user-1',
+      })
+    );
+
+    expect(integrationService.deleteMetaUserData).toHaveBeenCalledWith(
+      'threads-user-1',
+      ['threads']
+    );
+  });
+
+  it('deletes every provider when multiple products use the same Meta app', async () => {
+    process.env.THREADS_APP_ID = '123456';
+    process.env.THREADS_APP_SECRET = 'meta-test-secret';
+    process.env.INSTAGRAM_APP_ID = '123456';
+    process.env.INSTAGRAM_APP_SECRET = 'meta-test-secret';
+    const { controller, integrationService } = buildController();
+
+    await controller.deleteMetaData(
+      signedRequest({
+        algorithm: 'HMAC-SHA256',
+        app_id: '123456',
+        user_id: 'all-meta-user',
+      })
+    );
+
+    expect(integrationService.deleteMetaUserData).toHaveBeenCalledWith(
+      'all-meta-user',
+      ['facebook', 'instagram', 'instagram-standalone', 'threads']
+    );
   });
 });

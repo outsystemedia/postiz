@@ -4,6 +4,7 @@ const META_PROVIDERS = new Set([
   'facebook',
   'instagram',
   'instagram-standalone',
+  'threads',
 ]);
 const ENCRYPTED_SECRET_PREFIX = 'secret:v1:';
 

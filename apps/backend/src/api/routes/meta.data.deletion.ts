@@ -58,7 +58,9 @@ export function verifyMetaDeletionSignedRequest(
       payload.app_id !== undefined &&
       String(payload.app_id) !== app.appId
     ) {
-      throw new Error('Meta signed_request app mismatch');
+      // Multiple Meta products can share an app secret. Keep looking for the
+      // matching app id rather than rejecting a valid request too early.
+      continue;
     }
     if (!payload.user_id) {
       throw new Error('Meta signed_request does not contain user_id');

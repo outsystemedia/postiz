@@ -60,7 +60,30 @@ export class NoAuthIntegrationsController {
         appSecret: process.env.INSTAGRAM_APP_SECRET ?? '',
         providers: ['instagram-standalone'],
       },
-    ].filter((app) => app.appSecret);
+      {
+        appId: process.env.THREADS_APP_ID,
+        appSecret: process.env.THREADS_APP_SECRET ?? '',
+        providers: ['threads'],
+      },
+    ]
+      .filter((app) => app.appSecret)
+      .reduce<
+        Array<{ appId?: string; appSecret: string; providers: string[] }>
+      >((grouped, app) => {
+        const existing = grouped.find(
+          (candidate) =>
+            candidate.appId === app.appId &&
+            candidate.appSecret === app.appSecret
+        );
+        if (existing) {
+          existing.providers = [
+            ...new Set([...existing.providers, ...app.providers]),
+          ];
+        } else {
+          grouped.push({ ...app });
+        }
+        return grouped;
+      }, []);
 
     if (!apps.length) {
       throw new HttpException('Meta data deletion is not configured', 503);

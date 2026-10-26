@@ -138,6 +138,7 @@ describe('PublicIntegrationsController — DesignerPRO connect-state additions',
           metaAdvancedPublishing: true,
           metaFollowUpComments: true,
           instagramAudioSearch: true,
+          threadsAdvancedPublishing: true,
         }
       );
     });

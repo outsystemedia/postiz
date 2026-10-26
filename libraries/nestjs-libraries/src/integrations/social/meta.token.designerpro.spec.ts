@@ -15,8 +15,13 @@ describe('Meta provider token storage', () => {
     else process.env.JWT_SECRET = previousSecret;
   });
 
-  it('encrypts Facebook and Instagram tokens at rest and decrypts them for providers', () => {
-    for (const provider of ['facebook', 'instagram', 'instagram-standalone']) {
+  it('encrypts Facebook, Instagram and Threads tokens at rest and decrypts them for providers', () => {
+    for (const provider of [
+      'facebook',
+      'instagram',
+      'instagram-standalone',
+      'threads',
+    ]) {
       const encrypted = encryptMetaProviderToken(
         provider,
         'page-token___user-token'

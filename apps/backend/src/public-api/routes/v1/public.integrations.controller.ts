@@ -278,6 +278,7 @@ export class PublicIntegrationsController {
       metaAdvancedPublishing: true,
       metaFollowUpComments: true,
       instagramAudioSearch: true,
+      threadsAdvancedPublishing: true,
     };
   }
 

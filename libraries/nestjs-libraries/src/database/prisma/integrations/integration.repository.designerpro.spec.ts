@@ -6,6 +6,12 @@
 import { IntegrationRepository } from './integration.repository';
 
 function buildRepository() {
+  const integrationModel = {
+    update: jest.fn(),
+    updateMany: jest.fn(),
+    findMany: jest.fn(),
+  };
+  const postModel = { updateMany: jest.fn() };
   const customerModel = {
     create: jest.fn(),
     update: jest.fn(),
@@ -13,20 +19,22 @@ function buildRepository() {
     findMany: jest.fn(),
   };
 
+  const integrations = { model: { integration: integrationModel } } as any;
+  const posts = { model: { post: postModel } } as any;
   const customers = { model: { customer: customerModel } } as any;
   // Unused by the methods under test — untyped stand-ins are sufficient.
   const unused = {} as any;
 
   const repository = new IntegrationRepository(
-    unused, // _integration
-    unused, // _posts
+    integrations, // _integration
+    posts, // _posts
     unused, // _plugs
     unused, // _exisingPlugData
     customers, // _customers
     unused // _mentions
   );
 
-  return { repository, customerModel };
+  return { repository, customerModel, integrationModel, postModel };
 }
 
 describe('IntegrationRepository — DesignerPRO group (Customer) additions', () => {
@@ -54,7 +62,7 @@ describe('IntegrationRepository — DesignerPRO group (Customer) additions', () 
     });
   });
 
-  it('renameCustomer scoped to a different org will not match another org\'s customer row', async () => {
+  it("renameCustomer scoped to a different org will not match another org's customer row", async () => {
     // Prisma resolves `where: { id, orgId }` as an AND filter — a row that
     // exists under a different orgId simply won't match, so this asserts the
     // call shape enforces that scoping rather than only filtering by id.
@@ -93,5 +101,70 @@ describe('IntegrationRepository — DesignerPRO group (Customer) additions', () 
     expect(customerModel.findFirst).toHaveBeenCalledWith({
       where: { id: 'cust_1', orgId: 'org_1', deletedAt: null },
     });
+  });
+});
+
+describe('IntegrationRepository — credential and Meta deletion', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('wipes stored credentials when a channel is disconnected', async () => {
+    const { repository, integrationModel } = buildRepository();
+    const now = new Date('2026-10-26T12:00:00.000Z');
+    jest.useFakeTimers().setSystemTime(now);
+    integrationModel.update.mockResolvedValue({ id: 'int_1' });
+
+    await repository.deleteChannel('org_1', 'int_1');
+
+    expect(integrationModel.update).toHaveBeenCalledWith({
+      where: { id: 'int_1', organizationId: 'org_1' },
+      data: {
+        deletedAt: now,
+        disabled: true,
+        refreshNeeded: false,
+        inBetweenSteps: false,
+        token: '',
+        refreshToken: null,
+        tokenExpiration: null,
+        customInstanceDetails: null,
+      },
+    });
+  });
+
+  it('anonymizes Meta integrations and their queued post data by signed user id', async () => {
+    const { repository, integrationModel, postModel } = buildRepository();
+    integrationModel.findMany.mockResolvedValue([
+      { id: 'int_fb' },
+      { id: 'int_ig' },
+    ]);
+    integrationModel.updateMany.mockResolvedValue({ count: 2 });
+    postModel.updateMany.mockResolvedValue({ count: 3 });
+
+    await expect(
+      repository.deleteMetaUserData('meta-user-1', ['facebook', 'instagram'])
+    ).resolves.toEqual({ deleted: 2 });
+
+    expect(integrationModel.findMany).toHaveBeenCalledWith({
+      where: {
+        providerIdentifier: { in: ['facebook', 'instagram'] },
+        OR: [{ rootInternalId: 'meta-user-1' }, { internalId: 'meta-user-1' }],
+      },
+      select: { id: true },
+    });
+    expect(postModel.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { integrationId: { in: ['int_fb', 'int_ig'] } },
+      })
+    );
+    expect(integrationModel.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['int_fb', 'int_ig'] } },
+        data: expect.objectContaining({
+          token: '',
+          refreshToken: null,
+          rootInternalId: null,
+          disabled: true,
+        }),
+      })
+    );
   });
 });

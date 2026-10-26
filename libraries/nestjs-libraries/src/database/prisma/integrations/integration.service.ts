@@ -25,6 +25,7 @@ import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { TemporalService } from 'nestjs-temporal-core';
+import { encryptMetaProviderToken } from '@gitroom/nestjs-libraries/integrations/social/meta.token';
 
 dayjs.extend(utc);
 
@@ -84,8 +85,24 @@ export class IntegrationService {
     return this._integrationRepository.checkPreviousConnections(org, id);
   }
 
-  saveCredentialIntegration(org: string, groupId: string, internalId: string, provider: string, name: string, username: string, token: string) {
-    return this._integrationRepository.saveCredentialIntegration(org, groupId, internalId, provider, name, username, token);
+  saveCredentialIntegration(
+    org: string,
+    groupId: string,
+    internalId: string,
+    provider: string,
+    name: string,
+    username: string,
+    token: string
+  ) {
+    return this._integrationRepository.saveCredentialIntegration(
+      org,
+      groupId,
+      internalId,
+      provider,
+      name,
+      username,
+      token
+    );
   }
 
   async createOrUpdateIntegration(
@@ -129,8 +146,8 @@ export class IntegrationService {
       type,
       internalId,
       provider,
-      token,
-      refreshToken,
+      encryptMetaProviderToken(provider, token),
+      encryptMetaProviderToken(provider, refreshToken),
       expiresIn,
       username,
       isBetweenSteps,
@@ -297,6 +314,10 @@ export class IntegrationService {
     return this._integrationRepository.deleteChannel(org, id);
   }
 
+  async deleteMetaUserData(userId: string, providers: string[]) {
+    return this._integrationRepository.deleteMetaUserData(userId, providers);
+  }
+
   async disableIntegrations(org: string, totalChannels: number) {
     return this._integrationRepository.disableIntegrations(org, totalChannels);
   }
@@ -343,7 +364,10 @@ export class IntegrationService {
       organizationId: org,
       name: getIntegrationInformation.name,
       inBetweenSteps: false,
-      token: getIntegrationInformation.access_token,
+      token: encryptMetaProviderToken(
+        getIntegration.providerIdentifier,
+        getIntegrationInformation.access_token
+      ),
       profile: getIntegrationInformation.username,
     });
 

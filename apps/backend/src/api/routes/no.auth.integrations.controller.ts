@@ -23,6 +23,8 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
+import { randomUUID } from 'crypto';
+import { verifyMetaDeletionSignedRequest } from './meta.data.deletion';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -37,6 +39,72 @@ export class NoAuthIntegrationsController {
   @Get('/')
   getIntegrations() {
     return this._integrationManager.getAllIntegrations();
+  }
+
+  /**
+   * Meta invokes this URL when a person removes the app and requests that
+   * their data be deleted. The signed_request is verified before any lookup.
+   */
+  @Post('/meta/data-deletion')
+  async deleteMetaData(@Body('signed_request') signedRequest: string) {
+    const apps = [
+      {
+        appId: process.env.FACEBOOK_APP_ID,
+        appSecret: process.env.FACEBOOK_APP_SECRET ?? '',
+        providers: ['facebook', 'instagram'],
+      },
+      {
+        appId: process.env.INSTAGRAM_APP_ID,
+        appSecret: process.env.INSTAGRAM_APP_SECRET ?? '',
+        providers: ['instagram-standalone'],
+      },
+    ].filter((app) => app.appSecret);
+
+    if (!apps.length) {
+      throw new HttpException('Meta data deletion is not configured', 503);
+    }
+
+    let verified: ReturnType<typeof verifyMetaDeletionSignedRequest>;
+    try {
+      verified = verifyMetaDeletionSignedRequest(signedRequest, apps);
+    } catch {
+      throw new HttpException('Invalid Meta signed_request', 400);
+    }
+
+    await this._integrationService.deleteMetaUserData(
+      verified.userId,
+      verified.providers
+    );
+
+    const confirmationCode = randomUUID();
+    const configuredBackend = process.env.NEXT_PUBLIC_BACKEND_URL?.replace(
+      /\/$/,
+      ''
+    );
+    const fallbackBackend = `${String(process.env.FRONTEND_URL ?? '').replace(
+      /\/$/,
+      ''
+    )}/api`;
+
+    return {
+      url: `${
+        configuredBackend || fallbackBackend
+      }/integrations/meta/data-deletion/status/${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    };
+  }
+
+  @Get('/meta/data-deletion/status/:confirmationCode')
+  metaDataDeletionStatus(@Param('confirmationCode') confirmationCode: string) {
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        confirmationCode
+      )
+    ) {
+      throw new HttpException('Invalid confirmation code', 400);
+    }
+
+    return { status: 'completed', confirmation_code: confirmationCode };
   }
 
   @Post('/social-connect/:integration')

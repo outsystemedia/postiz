@@ -21,13 +21,38 @@ export class IntegrationRepository {
 
   // New credential connections are scoped to a brand group. Legacy IDs and
   // credentials are never overwritten by the self-serve endpoint.
-  saveCredentialIntegration(org: string, groupId: string, internalId: string, provider: string, name: string, username: string, token: string) {
-    const data = { name, profile: username, token, refreshToken: '',
-      tokenExpiration: null as Date | null, customInstanceDetails: null as string | null, refreshNeeded: false,
-      deletedAt: null as Date | null, disabled: false, customerId: groupId };
+  saveCredentialIntegration(
+    org: string,
+    groupId: string,
+    internalId: string,
+    provider: string,
+    name: string,
+    username: string,
+    token: string
+  ) {
+    const data = {
+      name,
+      profile: username,
+      token,
+      refreshToken: '',
+      tokenExpiration: null as Date | null,
+      customInstanceDetails: null as string | null,
+      refreshNeeded: false,
+      deletedAt: null as Date | null,
+      disabled: false,
+      customerId: groupId,
+    };
     return this._integration.model.integration.upsert({
       where: { organizationId_internalId: { organizationId: org, internalId } },
-      create: { ...data, organizationId: org, internalId, rootInternalId: internalId, providerIdentifier: provider, type: 'social', additionalSettings: '[]' },
+      create: {
+        ...data,
+        organizationId: org,
+        internalId,
+        rootInternalId: internalId,
+        providerIdentifier: provider,
+        type: 'social',
+        additionalSettings: '[]',
+      },
       update: data,
     });
   }
@@ -602,8 +627,67 @@ export class IntegrationRepository {
       },
       data: {
         deletedAt: new Date(),
+        disabled: true,
+        refreshNeeded: false,
+        inBetweenSteps: false,
+        token: '',
+        refreshToken: null,
+        tokenExpiration: null,
+        customInstanceDetails: null,
       },
     });
+  }
+
+  /**
+   * Fulfil a verified Meta user-data deletion request. Posts are retained only
+   * as anonymized tombstones so their relational links remain valid.
+   */
+  async deleteMetaUserData(userId: string, providers: string[]) {
+    const integrations = await this._integration.model.integration.findMany({
+      where: {
+        providerIdentifier: { in: providers },
+        OR: [{ rootInternalId: userId }, { internalId: userId }],
+      },
+      select: { id: true },
+    });
+    const integrationIds = integrations.map(({ id }) => id);
+    if (!integrationIds.length) return { deleted: 0 };
+
+    await this._posts.model.post.updateMany({
+      where: { integrationId: { in: integrationIds } },
+      data: {
+        content: '',
+        title: null,
+        description: null,
+        settings: null,
+        image: null,
+        releaseId: null,
+        releaseURL: null,
+        error: null,
+        deletedAt: new Date(),
+      },
+    });
+
+    await this._integration.model.integration.updateMany({
+      where: { id: { in: integrationIds } },
+      data: {
+        name: 'Deleted Meta account',
+        picture: null,
+        profile: null,
+        token: '',
+        refreshToken: null,
+        tokenExpiration: null,
+        customInstanceDetails: null,
+        additionalSettings: '[]',
+        rootInternalId: null,
+        disabled: true,
+        refreshNeeded: false,
+        inBetweenSteps: false,
+        deletedAt: new Date(),
+      },
+    });
+
+    return { deleted: integrationIds.length };
   }
 
   async checkForDeletedOnceAndUpdate(org: string, page: string) {

@@ -13,6 +13,7 @@
 // the same read/write path the controller and public.integrations.controller.ts
 // both use.
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import { createHmac } from 'crypto';
 
 // This controller imports IntegrationManager directly (not just via
 // IntegrationService), and IntegrationManager's own module pulls in the full
@@ -28,9 +29,12 @@ jest.mock('@gitroom/nestjs-libraries/integrations/integration.manager', () => ({
   IntegrationManager: jest.fn(),
   socialIntegrationList: [],
 }));
-jest.mock('@gitroom/nestjs-libraries/integrations/refresh.integration.service', () => ({
-  RefreshIntegrationService: jest.fn(),
-}));
+jest.mock(
+  '@gitroom/nestjs-libraries/integrations/refresh.integration.service',
+  () => ({
+    RefreshIntegrationService: jest.fn(),
+  })
+);
 jest.mock(
   '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service',
   () => ({ OrganizationService: jest.fn() })
@@ -41,6 +45,7 @@ import { NoAuthIntegrationsController } from './no.auth.integrations.controller'
 function buildController(overrides?: {
   createOrUpdateIntegration?: jest.Mock;
   getOrgById?: jest.Mock;
+  deleteMetaUserData?: jest.Mock;
 }) {
   const integrationProvider = {
     customFields: false,
@@ -77,6 +82,9 @@ function buildController(overrides?: {
         refreshToken: 'secret-refresh-must-not-leak',
         customInstanceDetails: null,
       }),
+    deleteMetaUserData:
+      overrides?.deleteMetaUserData ??
+      jest.fn().mockResolvedValue({ deleted: 1 }),
   } as any;
 
   const refreshIntegrationService = {
@@ -143,5 +151,76 @@ describe('NoAuthIntegrationsController — DesignerPRO connect-result stash', ()
     const raw = await ioRedis.get(`connect-result:${STATE}`);
     expect(raw).not.toContain('secret-token-must-not-leak');
     expect(raw).not.toContain('secret-refresh-must-not-leak');
+  });
+});
+
+describe('NoAuthIntegrationsController — Meta data deletion callback', () => {
+  const previousEnv = { ...process.env };
+
+  beforeEach(() => {
+    process.env.FACEBOOK_APP_ID = '123456';
+    process.env.FACEBOOK_APP_SECRET = 'meta-test-secret';
+    process.env.NEXT_PUBLIC_BACKEND_URL = 'https://postiz.example.com/api';
+    delete process.env.INSTAGRAM_APP_ID;
+    delete process.env.INSTAGRAM_APP_SECRET;
+  });
+
+  afterAll(() => {
+    process.env = previousEnv;
+  });
+
+  function signedRequest(payload: object, secret = 'meta-test-secret') {
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+      'base64url'
+    );
+    const signature = createHmac('sha256', secret)
+      .update(encodedPayload)
+      .digest('base64url');
+    return `${signature}.${encodedPayload}`;
+  }
+
+  it('verifies the signature, deletes matching Meta data and returns a status URL', async () => {
+    const { controller, integrationService } = buildController();
+
+    const result = await controller.deleteMetaData(
+      signedRequest({
+        algorithm: 'HMAC-SHA256',
+        app_id: '123456',
+        user_id: 'meta-user-1',
+      })
+    );
+
+    expect(integrationService.deleteMetaUserData).toHaveBeenCalledWith(
+      'meta-user-1',
+      ['facebook', 'instagram']
+    );
+    expect(result.confirmation_code).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(result.url).toBe(
+      `https://postiz.example.com/api/integrations/meta/data-deletion/status/${result.confirmation_code}`
+    );
+    expect(controller.metaDataDeletionStatus(result.confirmation_code)).toEqual(
+      {
+        status: 'completed',
+        confirmation_code: result.confirmation_code,
+      }
+    );
+  });
+
+  it('rejects a forged signed_request without touching stored data', async () => {
+    const { controller, integrationService } = buildController();
+
+    await expect(
+      controller.deleteMetaData(
+        signedRequest(
+          {
+            algorithm: 'HMAC-SHA256',
+            app_id: '123456',
+            user_id: 'meta-user-1',
+          },
+          'wrong-secret'
+        )
+      )
+    ).rejects.toMatchObject({ status: 400 });
+    expect(integrationService.deleteMetaUserData).not.toHaveBeenCalled();
   });
 });

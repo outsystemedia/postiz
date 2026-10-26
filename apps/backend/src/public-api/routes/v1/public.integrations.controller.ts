@@ -529,14 +529,17 @@ export class PublicIntegrationsController {
     }
 
     const result = JSON.parse(raw);
+    const integrations = Array.isArray(result.integrations)
+      ? result.integrations
+      : [result];
+    if (!integrations.length || !integrations[0]?.id) {
+      return { status: 'pending' as const };
+    }
     return {
       status: 'connected' as const,
-      integration: {
-        id: result.id,
-        name: result.name,
-        identifier: result.identifier,
-        picture: result.picture ?? null,
-      },
+      // Keep the singular field for older clients and credential providers.
+      integration: integrations[0],
+      integrations,
     };
   }
 

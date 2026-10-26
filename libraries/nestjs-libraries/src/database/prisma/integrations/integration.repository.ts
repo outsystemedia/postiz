@@ -267,7 +267,8 @@ export class IntegrationRepository {
     isBetweenSteps = false,
     refresh?: string,
     timezone?: number,
-    customInstanceDetails?: string
+    customInstanceDetails?: string,
+    rootInternalId?: string
   ) {
     const postTimes = timezone
       ? {
@@ -301,7 +302,7 @@ export class IntegrationRepository {
         ...postTimes,
         organizationId: org,
         refreshNeeded: false,
-        rootInternalId: internalId,
+        rootInternalId: rootInternalId ?? internalId,
         ...(customInstanceDetails ? { customInstanceDetails } : {}),
         additionalSettings: additionalSettings
           ? JSON.stringify(additionalSettings)
@@ -327,6 +328,7 @@ export class IntegrationRepository {
           ? { tokenExpiration: new Date(Date.now() + expiresIn * 1000) }
           : {}),
         internalId,
+        ...(rootInternalId ? { rootInternalId } : {}),
         organizationId: org,
         deletedAt: null,
         refreshNeeded: false,

@@ -25,7 +25,10 @@ import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { TemporalService } from 'nestjs-temporal-core';
-import { encryptMetaProviderToken } from '@gitroom/nestjs-libraries/integrations/social/meta.token';
+import {
+  decryptMetaProviderToken,
+  encryptMetaProviderToken,
+} from '@gitroom/nestjs-libraries/integrations/social/meta.token';
 
 dayjs.extend(utc);
 
@@ -129,7 +132,8 @@ export class IntegrationService {
     isBetweenSteps = false,
     refresh?: string,
     timezone?: number,
-    customInstanceDetails?: string
+    customInstanceDetails?: string,
+    rootInternalId?: string
   ) {
     const uploadedPicture = picture
       ? picture?.indexOf('imagedelivery.net') > -1
@@ -153,7 +157,8 @@ export class IntegrationService {
       isBetweenSteps,
       refresh,
       timezone,
-      customInstanceDetails
+      customInstanceDetails,
+      rootInternalId
     );
   }
 
@@ -349,29 +354,143 @@ export class IntegrationService {
       );
     }
 
+    const providerIdentifier = getIntegration.providerIdentifier;
+    const isFacebook = providerIdentifier === 'facebook';
+    const isInstagram = providerIdentifier === 'instagram';
+    if (isFacebook && !String(data?.page ?? '').trim()) {
+      throw new HttpException(
+        'Select a Facebook Page before continuing',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    if (
+      isInstagram &&
+      (!String(data?.id ?? '').trim() || !String(data?.pageId ?? '').trim())
+    ) {
+      throw new HttpException(
+        'Select an Instagram professional account before continuing',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+
+    // Keep the original user token until both selected assets have been
+    // resolved. Updating the primary row replaces its token with the Page
+    // token, which is intentionally narrower and can no longer discover the
+    // linked account.
+    const sourceToken = getIntegration.token;
+    const sourceUserToken = decryptMetaProviderToken(
+      getIntegration.refreshToken || getIntegration.token
+    );
+    const rootInternalId =
+      getIntegration.rootInternalId || getIntegration.internalId;
+    const expiresIn = getIntegration.tokenExpiration
+      ? Math.max(
+          60,
+          Math.floor(
+            (getIntegration.tokenExpiration.getTime() - Date.now()) / 1000
+          )
+        )
+      : undefined;
+
     const getIntegrationInformation = await provider.fetchPageInformation(
-      getIntegration.token,
+      sourceToken,
       data
     );
+
+    if (
+      !getIntegrationInformation?.id ||
+      !getIntegrationInformation?.access_token
+    ) {
+      throw new HttpException(
+        'The selected Page or profile could not be verified',
+        HttpStatus.BAD_REQUEST
+      );
+    }
 
     await this.checkForDeletedOnceAndUpdate(
       org,
       String(getIntegrationInformation.id)
     );
-    await this._integrationRepository.updateIntegration(id, {
-      picture: getIntegrationInformation.picture,
-      internalId: String(getIntegrationInformation.id),
-      organizationId: org,
-      name: getIntegrationInformation.name,
-      inBetweenSteps: false,
-      token: encryptMetaProviderToken(
-        getIntegration.providerIdentifier,
-        getIntegrationInformation.access_token
-      ),
-      profile: getIntegrationInformation.username,
-    });
+    const selectedIntegration =
+      await this._integrationRepository.updateIntegration(id, {
+        picture: getIntegrationInformation.picture,
+        internalId: String(getIntegrationInformation.id),
+        organizationId: org,
+        name: getIntegrationInformation.name,
+        inBetweenSteps: false,
+        token: encryptMetaProviderToken(
+          providerIdentifier,
+          getIntegrationInformation.access_token
+        ),
+        profile: getIntegrationInformation.username,
+      });
 
-    return { success: true };
+    const integrations = [selectedIntegration];
+    const metaPageId = isFacebook
+      ? String(data.page)
+      : isInstagram
+      ? String(data.pageId)
+      : undefined;
+
+    // Facebook Pages and professional Instagram accounts are two publishing
+    // targets backed by the same Meta authorization. Once the user selects
+    // either side, create/update the linked side automatically when present.
+    if (metaPageId && (isFacebook || isInstagram)) {
+      const pairedIdentifier = isFacebook ? 'instagram' : 'facebook';
+      const pairedProvider: any =
+        this._integrationManager.getSocialIntegration(pairedIdentifier);
+      let pairedInformation: any = null;
+
+      if (isFacebook && pairedProvider?.pages) {
+        const linkedAccounts = await pairedProvider.pages(sourceToken);
+        const linkedAccount = linkedAccounts.find(
+          (account: any) => String(account.pageId) === metaPageId
+        );
+        if (linkedAccount) {
+          pairedInformation = await pairedProvider.fetchPageInformation(
+            sourceToken,
+            {
+              id: String(linkedAccount.id),
+              pageId: metaPageId,
+            }
+          );
+        }
+      } else if (isInstagram && pairedProvider?.fetchPageInformation) {
+        pairedInformation = await pairedProvider.fetchPageInformation(
+          sourceToken,
+          { page: metaPageId }
+        );
+      }
+
+      if (pairedInformation?.id && pairedInformation?.access_token) {
+        await this.checkForDeletedOnceAndUpdate(
+          org,
+          String(pairedInformation.id)
+        );
+        const pairedIntegration = await this.createOrUpdateIntegration(
+          undefined,
+          false,
+          org,
+          pairedInformation.name,
+          pairedInformation.picture,
+          'social',
+          String(pairedInformation.id),
+          pairedIdentifier,
+          pairedInformation.access_token,
+          sourceUserToken,
+          expiresIn,
+          pairedInformation.username,
+          false,
+          undefined,
+          undefined,
+          undefined,
+          rootInternalId
+        );
+        integrations.push(pairedIntegration);
+      }
+    }
+
+    return { success: true, integrations, metaPageId };
   }
 
   async checkAnalytics(

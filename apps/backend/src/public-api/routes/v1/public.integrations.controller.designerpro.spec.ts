@@ -327,45 +327,147 @@ describe('PublicIntegrationsController — DesignerPRO connect-state additions',
           identifier: 'x',
           picture: 'https://pic.example.com/a.png',
         },
+        integrations: [
+          {
+            id: 'int_42',
+            name: 'my_handle',
+            identifier: 'x',
+            picture: 'https://pic.example.com/a.png',
+          },
+        ],
       });
+    });
+
+    it('returns every linked asset completed by one Meta selection', async () => {
+      await ioRedis.set('organization:state_1', ORG.id);
+      await ioRedis.set(
+        'connect-result:state_1',
+        JSON.stringify({
+          integrations: [
+            {
+              id: 'int_fb',
+              name: 'Acme Page',
+              identifier: 'facebook',
+              picture: null,
+              profile: 'acme.page',
+              externalId: 'page_123',
+              metaPageId: 'page_123',
+            },
+            {
+              id: 'int_ig',
+              name: 'Acme',
+              identifier: 'instagram',
+              picture: null,
+              profile: 'acme',
+              externalId: 'ig_123',
+              metaPageId: 'page_123',
+            },
+          ],
+        })
+      );
+      const { controller } = buildController();
+
+      const result = await controller.getSocialConnectResult(ORG, 'state_1');
+
+      expect(result.status).toBe('connected');
+      expect(result.integration.id).toBe('int_fb');
+      expect(result.integrations).toHaveLength(2);
+      expect(result.integrations.map((item: any) => item.identifier)).toEqual([
+        'facebook',
+        'instagram',
+      ]);
     });
   });
 });
 
 describe('credential connections', () => {
   const credentials = { apiKey: 'do-not-log-this' };
-  const identity = { id: 'account-1', name: 'Writer', username: 'writer', token: 'do-not-log-this', credentials: {} };
+  const identity = {
+    id: 'account-1',
+    name: 'Writer',
+    username: 'writer',
+    token: 'do-not-log-this',
+    credentials: {},
+  };
   function setup() {
     process.env.JWT_SECRET = 'local-unit-test-secret';
     const authenticate = jest.fn().mockResolvedValue(identity);
-    const service = { getCustomer: jest.fn().mockResolvedValue({ id: 'brand-1' }), saveCredentialIntegration: jest.fn().mockImplementation(async (...args) => ({ id: args[2], name: args[4], providerIdentifier: args[3] })) };
-    const manager = { getSocialIntegration: jest.fn().mockReturnValue({ credentialConnection: { authenticate } }) };
+    const service = {
+      getCustomer: jest.fn().mockResolvedValue({ id: 'brand-1' }),
+      saveCredentialIntegration: jest
+        .fn()
+        .mockImplementation(async (...args) => ({
+          id: args[2],
+          name: args[4],
+          providerIdentifier: args[3],
+        })),
+    };
+    const manager = {
+      getSocialIntegration: jest
+        .fn()
+        .mockReturnValue({ credentialConnection: { authenticate } }),
+    };
     const unused = {} as any;
-    return { authenticate, service, controller: new PublicIntegrationsController(service as any, unused, unused, unused, manager as any, unused) };
+    return {
+      authenticate,
+      service,
+      controller: new PublicIntegrationsController(
+        service as any,
+        unused,
+        unused,
+        unused,
+        manager as any,
+        unused
+      ),
+    };
   }
   it('checks group ownership before attempting authentication', async () => {
     const { service, authenticate, controller } = setup();
     service.getCustomer.mockResolvedValue(null);
-    await expect(controller.connectCredentials(ORG, 'devto', { groupId: 'brand-1', credentials })).rejects.toMatchObject({ status: 404 });
+    await expect(
+      controller.connectCredentials(ORG, 'devto', {
+        groupId: 'brand-1',
+        credentials,
+      })
+    ).rejects.toMatchObject({ status: 404 });
     expect(authenticate).not.toHaveBeenCalled();
     expect(service.saveCredentialIntegration).not.toHaveBeenCalled();
   });
   it('does not persist or leak invalid credential errors', async () => {
     const { service, authenticate, controller } = setup();
     authenticate.mockRejectedValue(new Error('do-not-log-this'));
-    await expect(controller.connectCredentials(ORG, 'devto', { groupId: 'brand-1', credentials })).rejects.not.toThrow('do-not-log-this');
+    await expect(
+      controller.connectCredentials(ORG, 'devto', {
+        groupId: 'brand-1',
+        credentials,
+      })
+    ).rejects.not.toThrow('do-not-log-this');
     expect(service.saveCredentialIntegration).not.toHaveBeenCalled();
   });
   it('isolates providers and brands while reconnecting the same account idempotently', async () => {
     const { service, controller } = setup();
-    const first = await controller.connectCredentials(ORG, 'devto', { groupId: 'brand-1', credentials });
-    const again = await controller.connectCredentials(ORG, 'devto', { groupId: 'brand-1', credentials });
-    const otherBrand = await controller.connectCredentials(ORG, 'devto', { groupId: 'brand-2', credentials });
-    const otherProvider = await controller.connectCredentials(ORG, 'hashnode', { groupId: 'brand-1', credentials });
+    const first = await controller.connectCredentials(ORG, 'devto', {
+      groupId: 'brand-1',
+      credentials,
+    });
+    const again = await controller.connectCredentials(ORG, 'devto', {
+      groupId: 'brand-1',
+      credentials,
+    });
+    const otherBrand = await controller.connectCredentials(ORG, 'devto', {
+      groupId: 'brand-2',
+      credentials,
+    });
+    const otherProvider = await controller.connectCredentials(ORG, 'hashnode', {
+      groupId: 'brand-1',
+      credentials,
+    });
     expect(first.integration.id).toBe(again.integration.id);
     expect(first.integration.id).not.toBe(otherBrand.integration.id);
     expect(first.integration.id).not.toBe(otherProvider.integration.id);
-    expect(service.saveCredentialIntegration.mock.calls[0][6]).toMatch(/^secret:v1:/);
+    expect(service.saveCredentialIntegration.mock.calls[0][6]).toMatch(
+      /^secret:v1:/
+    );
     expect(JSON.stringify(first)).not.toContain('do-not-log-this');
   });
 });

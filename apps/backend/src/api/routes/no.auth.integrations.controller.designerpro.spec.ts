@@ -46,12 +46,14 @@ function buildController(overrides?: {
   createOrUpdateIntegration?: jest.Mock;
   getOrgById?: jest.Mock;
   deleteMetaUserData?: jest.Mock;
+  saveProviderPage?: jest.Mock;
+  isBetweenSteps?: boolean;
 }) {
   const integrationProvider = {
     customFields: false,
     externalUrl: false,
     oneTimeToken: false,
-    isBetweenSteps: false,
+    isBetweenSteps: overrides?.isBetweenSteps ?? false,
     isChromeExtension: false,
     authenticate: jest.fn().mockResolvedValue({
       accessToken: 'access-token',
@@ -78,6 +80,8 @@ function buildController(overrides?: {
         name: 'My Handle',
         providerIdentifier: 'x',
         picture: 'https://pic.example.com/a.png',
+        profile: 'myhandle',
+        internalId: 'acct_1',
         token: 'secret-token-must-not-leak',
         refreshToken: 'secret-refresh-must-not-leak',
         customInstanceDetails: null,
@@ -85,6 +89,7 @@ function buildController(overrides?: {
     deleteMetaUserData:
       overrides?.deleteMetaUserData ??
       jest.fn().mockResolvedValue({ deleted: 1 }),
+    saveProviderPage: overrides?.saveProviderPage ?? jest.fn(),
   } as any;
 
   const refreshIntegrationService = {
@@ -132,10 +137,16 @@ describe('NoAuthIntegrationsController — DesignerPRO connect-result stash', ()
 
     const raw = await ioRedis.get(`connect-result:${STATE}`);
     expect(JSON.parse(raw as string)).toEqual({
-      id: 'int_new_1',
-      name: 'My Handle',
-      identifier: 'x',
-      picture: 'https://pic.example.com/a.png',
+      integrations: [
+        {
+          id: 'int_new_1',
+          name: 'My Handle',
+          identifier: 'x',
+          picture: 'https://pic.example.com/a.png',
+          profile: 'myhandle',
+          externalId: 'acct_1',
+        },
+      ],
     });
   });
 
@@ -151,6 +162,70 @@ describe('NoAuthIntegrationsController — DesignerPRO connect-result stash', ()
     const raw = await ioRedis.get(`connect-result:${STATE}`);
     expect(raw).not.toContain('secret-token-must-not-leak');
     expect(raw).not.toContain('secret-refresh-must-not-leak');
+  });
+
+  it('waits for explicit selection and then stashes both linked Meta assets', async () => {
+    const saveProviderPage = jest.fn().mockResolvedValue({
+      metaPageId: 'page_123',
+      integrations: [
+        {
+          id: 'int_fb',
+          name: 'Acme Page',
+          providerIdentifier: 'facebook',
+          picture: 'https://pic.example.com/fb.png',
+          profile: 'acme.page',
+          internalId: 'page_123',
+        },
+        {
+          id: 'int_ig',
+          name: 'Acme',
+          providerIdentifier: 'instagram',
+          picture: 'https://pic.example.com/ig.png',
+          profile: 'acme',
+          internalId: 'ig_123',
+        },
+      ],
+    });
+    const { controller } = buildController({
+      isBetweenSteps: true,
+      saveProviderPage,
+    });
+
+    await controller.connectSocialMedia('x', {
+      state: STATE,
+      code: 'auth-code',
+      timezone: '0',
+    } as any);
+    await expect(
+      ioRedis.get(`connect-result:${STATE}`)
+    ).resolves.toBeUndefined();
+
+    const result = await controller.saveProviderPage('int_new_1', {
+      state: STATE,
+      page: 'page_123',
+    });
+
+    expect(saveProviderPage).toHaveBeenCalledWith('org_1', 'int_new_1', {
+      state: STATE,
+      page: 'page_123',
+    });
+    expect(result.integrations).toEqual([
+      expect.objectContaining({
+        id: 'int_fb',
+        identifier: 'facebook',
+        externalId: 'page_123',
+        metaPageId: 'page_123',
+      }),
+      expect.objectContaining({
+        id: 'int_ig',
+        identifier: 'instagram',
+        externalId: 'ig_123',
+        metaPageId: 'page_123',
+      }),
+    ]);
+    const raw = await ioRedis.get(`connect-result:${STATE}`);
+    expect(raw).not.toContain('secret-token-must-not-leak');
+    expect(JSON.parse(raw as string).integrations).toHaveLength(2);
   });
 });
 

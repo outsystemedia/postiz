@@ -35,6 +35,7 @@ export class InstagramProvider
     'instagram_basic',
     'pages_show_list',
     'pages_read_engagement',
+    'pages_manage_posts',
     'instagram_content_publish',
   ];
   override maxConcurrentJob = 400;

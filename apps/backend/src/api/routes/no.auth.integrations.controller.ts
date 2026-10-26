@@ -328,14 +328,24 @@ export class NoAuthIntegrationsController {
     // can hand it back to a Public API caller polling for the outcome,
     // instead of the caller having to diff integration list snapshots and
     // guess. TTL matches the DesignerPRO-side pending-connection window.
-    if (body.state) {
+    // Two-step providers are not connected until the user explicitly selects
+    // a Page/profile below. Publishing an intermediate login identity here
+    // made external callers claim the person's Facebook identity before the
+    // selection screen was completed.
+    if (body.state && (!integrationProvider.isBetweenSteps || refresh)) {
       await ioRedis.set(
         `connect-result:${body.state}`,
         JSON.stringify({
-          id: createUpdate.id,
-          name: createUpdate.name,
-          identifier: createUpdate.providerIdentifier,
-          picture: createUpdate.picture ?? null,
+          integrations: [
+            {
+              id: createUpdate.id,
+              name: createUpdate.name,
+              identifier: createUpdate.providerIdentifier,
+              picture: createUpdate.picture ?? null,
+              profile: createUpdate.profile ?? null,
+              externalId: createUpdate.internalId,
+            },
+          ],
         }),
         'EX',
         600
@@ -426,7 +436,32 @@ export class NoAuthIntegrationsController {
 
     const org = await this._organizationService.getOrgById(organization);
 
-    return this._integrationService.saveProviderPage(org.id, id, body);
+    const result = await this._integrationService.saveProviderPage(
+      org.id,
+      id,
+      body
+    );
+    const integrations = result.integrations.map((integration) => ({
+      id: integration.id,
+      name: integration.name,
+      identifier: integration.providerIdentifier,
+      picture: integration.picture ?? null,
+      profile: integration.profile ?? null,
+      externalId: integration.internalId,
+      metaPageId: result.metaPageId ?? null,
+    }));
+
+    // Only this point represents a completed two-step connection: the user
+    // selected an actual Facebook Page or professional Instagram account and
+    // the linked counterpart (when available) has also been persisted.
+    await ioRedis.set(
+      `connect-result:${body.state}`,
+      JSON.stringify({ integrations }),
+      'EX',
+      600
+    );
+
+    return { success: true, integrations };
   }
 
   @Post('/extension-refresh')

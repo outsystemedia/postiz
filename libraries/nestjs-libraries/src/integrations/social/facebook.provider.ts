@@ -31,7 +31,17 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
   identifier = 'facebook';
   name = 'Facebook Page';
   isBetweenSteps = true;
-  scopes = ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement'];
+  // One Meta authorization is enough to connect the selected Facebook Page
+  // and its linked professional Instagram account. Keeping the same scope set
+  // in both providers also makes the flow symmetric when Instagram is chosen
+  // first.
+  scopes = [
+    'pages_show_list',
+    'pages_read_engagement',
+    'pages_manage_posts',
+    'instagram_basic',
+    'instagram_content_publish',
+  ];
   override maxConcurrentJob = 500; // Facebook has reasonable rate limits
   editor = 'normal' as const;
   maxLength() {

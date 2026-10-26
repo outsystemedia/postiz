@@ -30,7 +30,6 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
     'threads_basic',
     'threads_content_publish',
     'threads_manage_replies',
-    'threads_manage_insights',
     // 'threads_profile_discovery',
   ];
   override maxConcurrentJob = 2; // Threads has moderate rate limits

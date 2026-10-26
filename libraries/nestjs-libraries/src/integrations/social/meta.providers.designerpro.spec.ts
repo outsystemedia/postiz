@@ -27,6 +27,14 @@ describe('DesignerPRO Meta provider behavior', () => {
     expect(new InstagramStandaloneProvider().scopes).toContain(
       'instagram_business_manage_comments'
     );
+    expect(new InstagramStandaloneProvider().scopes).not.toContain(
+      'instagram_business_manage_insights'
+    );
+    expect(new ThreadsProvider().scopes).toEqual([
+      'threads_basic',
+      'threads_content_publish',
+      'threads_manage_replies',
+    ]);
   });
 
   it('enforces exactly one attachment for an Instagram Story', async () => {

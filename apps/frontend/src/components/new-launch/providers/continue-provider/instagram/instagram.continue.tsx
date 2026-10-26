@@ -27,18 +27,40 @@ export const InstagramContinue = withContinueProvider<
   swrKey: 'load-instagram-pages',
   titleKey: 'select_instagram_account',
   titleDefault: 'Select Instagram Account:',
+  guidanceMessages: [
+    {
+      key: 'designerpro_instagram_account_visibility',
+      text: 'Only professional Instagram accounts (Business or Creator) linked to a Facebook Page assigned to the profile used for this login appear here.',
+    },
+    {
+      key: 'designerpro_instagram_link_steps',
+      text: 'Missing an account? Link Instagram to its Facebook Page in Meta Business Suite and confirm that your Facebook profile has content access or full control over that Page. Then restart this connection.',
+    },
+    {
+      key: 'designerpro_meta_no_business_selection',
+      text: 'DesignerPRO does not choose a Business Portfolio. Meta returns the assets available to this Facebook profile.',
+    },
+  ],
+  guidanceLinks: [
+    {
+      key: 'designerpro_open_meta_assigned_assets',
+      text: 'Open People and assigned assets in Meta',
+      href: 'https://business.facebook.com/latest/settings/business_users',
+    },
+    {
+      key: 'designerpro_open_meta_instagram_accounts',
+      text: 'Open Instagram accounts in Meta',
+      href: 'https://business.facebook.com/latest/settings/instagram_accounts',
+    },
+  ],
   emptyStateMessages: [
     {
-      key: 'we_couldn_t_find_any_business_connected_to_the_selected_pages',
-      text: "We couldn't find any business connected to the selected pages.",
+      key: 'designerpro_no_eligible_instagram_accounts',
+      text: 'No eligible professional Instagram account was found for this profile.',
     },
     {
-      key: 'we_recommend_you_to_connect_all_the_pages_and_all_the_businesses',
-      text: 'We recommend you to connect all the pages and all the businesses.',
-    },
-    {
-      key: 'please_close_this_dialog_delete_your_integration_and_add_a_new_channel_again',
-      text: 'Please close this dialog, delete your integration and add a new channel again.',
+      key: 'designerpro_fix_meta_access_and_restart',
+      text: 'Correct the access in Meta, close this window, and start the connection again.',
     },
   ],
   getItemId: (item) => item.id,

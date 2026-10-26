@@ -29,12 +29,18 @@ export interface EmptyStateMessage {
   text: string;
 }
 
+export interface GuidanceLink extends EmptyStateMessage {
+  href: string;
+}
+
 export interface ContinueProviderConfig<TItem, TSelection> {
   endpoint: string;
   swrKey: string;
   titleKey: string;
   titleDefault: string;
   emptyStateMessages: EmptyStateMessage[];
+  guidanceMessages?: EmptyStateMessage[];
+  guidanceLinks?: GuidanceLink[];
   getSelectionValue: (item: TItem) => TSelection;
   transformSaveData: (selection: TSelection) => any;
   renderItem: (item: TItem, isSelected: boolean) => ReactNode;
@@ -51,6 +57,8 @@ export function withContinueProvider<TItem, TSelection>(
     titleKey,
     titleDefault,
     emptyStateMessages,
+    guidanceMessages,
+    guidanceLinks,
     getSelectionValue,
     transformSaveData,
     renderItem,
@@ -105,26 +113,55 @@ export function withContinueProvider<TItem, TSelection>(
       );
     }, [resolvedData, existingId]);
 
+    const guidance = guidanceMessages?.length ? (
+      <div className="rounded-[10px] border border-[#473d22] bg-[#282313] px-[14px] py-[12px] text-[13px] leading-[20px] text-[#f2d88b]">
+        <div className="space-y-[8px]">
+          {guidanceMessages.map((message) => (
+            <p key={message.key}>{t(message.key, message.text)}</p>
+          ))}
+        </div>
+        {!!guidanceLinks?.length && (
+          <div className="mt-[12px] flex flex-wrap gap-[8px]">
+            {guidanceLinks.map((link) => (
+              <a
+                key={link.key}
+                href={link.href}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-[7px] border border-[#766426] bg-[#362f19] px-[10px] py-[6px] font-medium text-[#ffe59a] hover:bg-[#443a1c]"
+              >
+                {t(link.key, link.text)} ↗
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null;
+
     if (!isLoading && !resolvedData?.length) {
       return (
-        <div className="text-center flex flex-col justify-center items-center text-[18px] leading-[26px] h-[300px]">
-          {emptyStateMessages.map((msg, index) => (
-            <span key={msg.key}>
-              {t(msg.key, msg.text)}
-              {index < emptyStateMessages.length - 1 && (
-                <>
-                  <br />
-                  <br />
-                </>
-              )}
-            </span>
-          ))}
+        <div className="flex flex-col gap-[20px]">
+          {guidance}
+          <div className="text-center flex flex-col justify-center items-center text-[16px] leading-[24px] min-h-[180px]">
+            {emptyStateMessages.map((msg, index) => (
+              <span key={msg.key}>
+                {t(msg.key, msg.text)}
+                {index < emptyStateMessages.length - 1 && (
+                  <>
+                    <br />
+                    <br />
+                  </>
+                )}
+              </span>
+            ))}
+          </div>
         </div>
       );
     }
 
     return (
       <div className="flex flex-col gap-[20px]">
+        {guidance}
         <div>{t(titleKey, titleDefault)}</div>
         <div className="grid grid-cols-3 justify-items-center select-none cursor-pointer gap-[10px]">
           {filteredData.map((item) => (
@@ -141,7 +178,11 @@ export function withContinueProvider<TItem, TSelection>(
           ))}
         </div>
         <div>
-          <Button disabled={!selection || isSaving} loading={isSaving} onClick={handleSave}>
+          <Button
+            disabled={!selection || isSaving}
+            loading={isSaving}
+            onClick={handleSave}
+          >
             {t('save', 'Save')}
           </Button>
         </div>

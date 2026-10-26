@@ -18,18 +18,40 @@ export const FacebookContinue = withContinueProvider<FacebookItem, string>({
   swrKey: 'load-facebook-pages',
   titleKey: 'select_page',
   titleDefault: 'Select Page:',
+  guidanceMessages: [
+    {
+      key: 'designerpro_facebook_page_visibility',
+      text: 'Only Pages assigned to the Facebook profile used for this login, with permission to create content or full control, appear here.',
+    },
+    {
+      key: 'designerpro_meta_page_access_steps',
+      text: 'Missing a Page? In Meta Business Suite, go to Settings → Users → People → your profile → Assigned assets → Page. Enable content creation or full control, then restart this connection.',
+    },
+    {
+      key: 'designerpro_meta_no_business_selection',
+      text: 'DesignerPRO does not choose a Business Portfolio. Meta returns the assets available to this Facebook profile.',
+    },
+  ],
+  guidanceLinks: [
+    {
+      key: 'designerpro_open_meta_assigned_assets',
+      text: 'Open People and assigned assets in Meta',
+      href: 'https://business.facebook.com/latest/settings/business_users',
+    },
+    {
+      key: 'designerpro_open_meta_pages',
+      text: 'Open Facebook Pages in Meta',
+      href: 'https://business.facebook.com/latest/settings/pages',
+    },
+  ],
   emptyStateMessages: [
     {
-      key: 'we_couldn_t_find_any_business_connected_to_the_selected_pages',
-      text: "We couldn't find any business connected to the selected pages.",
+      key: 'designerpro_no_eligible_facebook_pages',
+      text: 'No eligible Facebook Page was found for this profile.',
     },
     {
-      key: 'we_recommend_you_to_connect_all_the_pages_and_all_the_businesses',
-      text: 'We recommend you to connect all the pages and all the businesses.',
-    },
-    {
-      key: 'please_close_this_dialog_delete_your_integration_and_add_a_new_channel_again',
-      text: 'Please close this dialog, delete your integration and add a new channel again.',
+      key: 'designerpro_fix_meta_access_and_restart',
+      text: 'Correct the access in Meta, close this window, and start the connection again.',
     },
   ],
   getItemId: (item) => item.id,

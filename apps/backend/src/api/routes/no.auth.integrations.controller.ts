@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   HttpException,
   Param,
   Post,
@@ -46,6 +47,7 @@ export class NoAuthIntegrationsController {
    * their data be deleted. The signed_request is verified before any lookup.
    */
   @Post('/meta/data-deletion')
+  @HttpCode(200)
   async deleteMetaData(@Body('signed_request') signedRequest: string) {
     const apps = [
       {

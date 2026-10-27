@@ -7,6 +7,7 @@ import { IntegrationRepository } from './integration.repository';
 
 function buildRepository() {
   const integrationModel = {
+    upsert: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
     findMany: jest.fn(),
@@ -38,6 +39,30 @@ function buildRepository() {
 }
 
 describe('IntegrationRepository — DesignerPRO group (Customer) additions', () => {
+  it('reactivates both new and reconnected integrations during authentication upsert', async () => {
+    const { repository, integrationModel } = buildRepository();
+    integrationModel.upsert.mockResolvedValue({ id: 'int_1' });
+
+    await repository.createOrUpdateIntegration(
+      undefined,
+      false,
+      'org_1',
+      'My channel',
+      undefined,
+      'social',
+      'external_1',
+      'threads',
+      'fresh-token'
+    );
+
+    expect(integrationModel.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ disabled: false }),
+        update: expect.objectContaining({ disabled: false }),
+      })
+    );
+  });
+
   it('createCustomer creates a Customer scoped to the given org', async () => {
     const { repository, customerModel } = buildRepository();
     customerModel.create.mockResolvedValue({ id: 'cust_1', name: 'Acme' });

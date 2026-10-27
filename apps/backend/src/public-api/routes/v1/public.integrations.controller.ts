@@ -62,6 +62,7 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import { pricing } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/pricing';
 
 @ApiTags('Public API')
 @Controller('/public/v1')
@@ -315,6 +316,55 @@ export class PublicIntegrationsController {
             }
           : undefined,
       }));
+  }
+
+  /**
+   * DesignerPRO addition — idempotently makes a channel publishable.
+   * Called when a connection is claimed and immediately before creating a
+   * publication, closing any stale enabled-state gap between both systems.
+   */
+  @Put('/integrations/:id/enable')
+  async enableIntegration(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    const integration = await this._integrationService.getIntegrationById(
+      org.id,
+      id
+    );
+    if (!integration || integration.deletedAt) {
+      throw new HttpException({ msg: 'Integration not found' }, 404);
+    }
+
+    // Do not apply the plan limit again to an already-active channel. This is
+    // what makes the publication preflight safe to repeat.
+    if (!integration.disabled) {
+      return { id: integration.id, disabled: false };
+    }
+
+    const totalChannels = !process.env.STRIPE_PUBLISHABLE_KEY
+      ? 10000
+      : // The API-key middleware loads the subscription relation on org.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (org as any)?.subscription?.totalChannels || pricing.FREE.channel || 0;
+    try {
+      await this._integrationService.enableChannel(
+        org.id,
+        totalChannels,
+        integration.id
+      );
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message === 'You have reached the maximum number of channels'
+      ) {
+        throw new HttpException({ msg: err.message }, 409);
+      }
+      throw err;
+    }
+
+    return { id: integration.id, disabled: false };
   }
 
   @Get('/social/:integration')

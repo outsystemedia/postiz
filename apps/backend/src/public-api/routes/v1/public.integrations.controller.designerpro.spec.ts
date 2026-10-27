@@ -74,6 +74,18 @@ function buildController(integrationManager?: any) {
   return { controller };
 }
 
+function buildActivationController(integrationService: any) {
+  const unused = {} as any;
+  return new PublicIntegrationsController(
+    integrationService,
+    unused,
+    unused,
+    unused,
+    unused,
+    unused
+  );
+}
+
 function buildWordpressController(authResult?: any) {
   const provider = {
     oneTimeToken: false,
@@ -141,6 +153,87 @@ describe('PublicIntegrationsController — DesignerPRO connect-state additions',
           threadsAdvancedPublishing: true,
         }
       );
+    });
+  });
+
+  describe('PUT /integrations/:id/enable', () => {
+    const originalStripeKey = process.env.STRIPE_PUBLISHABLE_KEY;
+
+    afterEach(() => {
+      if (originalStripeKey === undefined) {
+        delete process.env.STRIPE_PUBLISHABLE_KEY;
+      } else {
+        process.env.STRIPE_PUBLISHABLE_KEY = originalStripeKey;
+      }
+    });
+
+    it('reactivates a disabled channel in the API-key organization', async () => {
+      delete process.env.STRIPE_PUBLISHABLE_KEY;
+      const integrationService = {
+        getIntegrationById: jest
+          .fn()
+          .mockResolvedValue({ id: 'int_1', disabled: true }),
+        enableChannel: jest.fn().mockResolvedValue(undefined),
+      };
+      const controller = buildActivationController(integrationService);
+
+      await expect(controller.enableIntegration(ORG, 'int_1')).resolves.toEqual(
+        { id: 'int_1', disabled: false }
+      );
+      expect(integrationService.getIntegrationById).toHaveBeenCalledWith(
+        ORG.id,
+        'int_1'
+      );
+      expect(integrationService.enableChannel).toHaveBeenCalledWith(
+        ORG.id,
+        10000,
+        'int_1'
+      );
+    });
+
+    it('is idempotent when the channel is already active', async () => {
+      const integrationService = {
+        getIntegrationById: jest
+          .fn()
+          .mockResolvedValue({ id: 'int_1', disabled: false }),
+        enableChannel: jest.fn(),
+      };
+      const controller = buildActivationController(integrationService);
+
+      await expect(controller.enableIntegration(ORG, 'int_1')).resolves.toEqual(
+        { id: 'int_1', disabled: false }
+      );
+      expect(integrationService.enableChannel).not.toHaveBeenCalled();
+    });
+
+    it('does not allow an integration outside the API-key organization', async () => {
+      const integrationService = {
+        getIntegrationById: jest.fn().mockResolvedValue(null),
+        enableChannel: jest.fn(),
+      };
+      const controller = buildActivationController(integrationService);
+
+      await expect(
+        controller.enableIntegration(OTHER_ORG, 'int_1')
+      ).rejects.toMatchObject({ status: 404 });
+      expect(integrationService.enableChannel).not.toHaveBeenCalled();
+    });
+
+    it('does not revive a deleted integration', async () => {
+      const integrationService = {
+        getIntegrationById: jest.fn().mockResolvedValue({
+          id: 'int_deleted',
+          disabled: true,
+          deletedAt: new Date(),
+        }),
+        enableChannel: jest.fn(),
+      };
+      const controller = buildActivationController(integrationService);
+
+      await expect(
+        controller.enableIntegration(ORG, 'int_deleted')
+      ).rejects.toMatchObject({ status: 404 });
+      expect(integrationService.enableChannel).not.toHaveBeenCalled();
     });
   });
 

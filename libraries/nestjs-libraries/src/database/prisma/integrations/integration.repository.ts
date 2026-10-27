@@ -290,6 +290,10 @@ export class IntegrationRepository {
         type: type as any,
         name,
         providerIdentifier: provider,
+        // A completed authentication always makes the selected channel usable.
+        // Keep this explicit for both sides of the upsert so a reconnect can
+        // never preserve a stale disabled state.
+        disabled: false,
         token,
         profile: username,
         ...(picture ? { picture } : {}),
@@ -330,6 +334,7 @@ export class IntegrationRepository {
         internalId,
         ...(rootInternalId ? { rootInternalId } : {}),
         organizationId: org,
+        disabled: false,
         deletedAt: null,
         refreshNeeded: false,
       },
